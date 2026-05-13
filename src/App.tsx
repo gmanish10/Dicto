@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import { api } from "./lib/ipc";
 import { useSettings } from "./hooks/useSettings";
 import { Logo } from "./components/Logo";
@@ -26,6 +27,11 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const { settings, loading } = useSettings();
+  const [version, setVersion] = useState<string>("");
+
+  useEffect(() => {
+    void getVersion().then(setVersion).catch(() => undefined);
+  }, []);
 
   // Redirect to onboarding if it hasn't been completed.
   useEffect(() => {
@@ -65,7 +71,7 @@ export default function App() {
           <NavItem to="/about" label="About" />
         </nav>
         <div className="mt-auto px-2 text-xs text-ink-400">
-          v{import.meta.env.VITE_APP_VERSION ?? "0.1.0"}
+          {version ? `v${version}` : "…"}
         </div>
         <div className="mt-2 px-2">
           {settings.paused ? (

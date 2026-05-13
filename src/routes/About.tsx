@@ -1,10 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getVersion, getTauriVersion } from "@tauri-apps/api/app";
 import { api } from "../lib/ipc";
 import { Logo } from "../components/Logo";
 
 export default function About() {
   const [checking, setChecking] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const [version, setVersion] = useState<string>("");
+  const [tauriVersion, setTauriVersion] = useState<string>("");
+
+  useEffect(() => {
+    void getVersion().then(setVersion).catch(() => undefined);
+    void getTauriVersion().then(setTauriVersion).catch(() => undefined);
+  }, []);
 
   async function checkUpdates() {
     setChecking(true);
@@ -28,6 +36,12 @@ export default function About() {
           <p className="text-sm text-ink-500 dark:text-ink-300">
             A free, open-source push-to-talk dictation app for macOS.
           </p>
+          {version && (
+            <p className="mt-1 text-xs text-ink-400">
+              v{version}
+              {tauriVersion && ` · built on Tauri ${tauriVersion}`}
+            </p>
+          )}
         </div>
       </header>
 
