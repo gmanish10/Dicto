@@ -1,0 +1,89 @@
+pub mod audio;
+pub mod commands;
+pub mod config;
+pub mod dictionary;
+pub mod history;
+pub mod hotkey;
+pub mod inject;
+pub mod keychain;
+pub mod menubar;
+pub mod model;
+pub mod permissions;
+pub mod pipeline;
+pub mod polish;
+pub mod state;
+pub mod transcribe;
+
+use std::sync::Arc;
+use tauri::Manager;
+use tracing_subscriber::EnvFilter;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info,dicto_lib=debug")),
+        )
+        .init();
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .setup(|app| {
+            let handle = app.handle().clone();
+
+            let app_state = Arc::new(state::AppState::initialize(&handle)?);
+            app.manage(app_state.clone());
+
+            menubar::install(&handle, app_state.clone())?;
+            pipeline::spawn_coordinator(handle.clone(), app_state.clone());
+
+            // Always show the main window on launch — easier to find than hunting
+            // for the tray icon. Subsequent shows happen via tray clicks.
+            if let Some(window) = handle.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::get_settings,
+            commands::set_settings,
+            commands::check_permissions,
+            commands::request_microphone_permission,
+            commands::open_system_settings,
+            commands::list_microphones,
+            commands::list_history,
+            commands::clear_history,
+            commands::list_dictionary_words,
+            commands::add_dictionary_word,
+            commands::delete_dictionary_word,
+            commands::list_replacements,
+            commands::upsert_replacement,
+            commands::delete_replacement,
+            commands::get_api_key_status,
+            commands::set_api_key,
+            commands::delete_api_key,
+            commands::set_hotkey,
+            commands::pause_dictation,
+            commands::resume_dictation,
+            commands::recheck_for_updates,
+            commands::reinject_transcript,
+            commands::record_correction,
+            commands::open_main_window,
+            commands::finish_onboarding,
+        ])
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_handle, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                // Keep app alive when last window closes; user must quit from tray.
+                api.prevent_exit();
+            }
+        });
+}

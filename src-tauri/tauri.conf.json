@@ -1,0 +1,70 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Dicto",
+  "version": "0.1.0",
+  "identifier": "com.dicto.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Dicto",
+        "url": "index.html",
+        "width": 960,
+        "height": 700,
+        "minWidth": 720,
+        "minHeight": 520,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "decorations": true,
+        "transparent": false,
+        "visible": true,
+        "alwaysOnTop": false,
+        "focus": true,
+        "titleBarStyle": "Visible"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://api.openai.com https://api.groq.com https://api.anthropic.com https://api.github.com https://huggingface.co"
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "category": "Productivity",
+    "copyright": "© 2026 Dicto contributors. MIT licensed.",
+    "targets": ["dmg", "app"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png"
+    ],
+    "resources": [
+      "resources/models/*"
+    ],
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "13.0",
+      "signingIdentity": null,
+      "entitlements": "entitlements.plist",
+      "exceptionDomain": ""
+    }
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/manishgoyal/Dicto/releases/latest/download/latest.json"
+      ],
+      "dialog": false,
+      "pubkey": ""
+    }
+  }
+}

@@ -1,0 +1,87 @@
+[package]
+name = "dicto"
+version = "0.1.0"
+description = "A free, open-source push-to-talk dictation app for macOS"
+authors = ["Dicto contributors"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/manishgoyal/Dicto"
+
+[lib]
+name = "dicto_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+# Tauri
+tauri = { version = "2.1", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-global-shortcut = "2"
+
+# Async
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Channels / sync
+crossbeam-channel = "0.5"
+parking_lot = "0.12"
+
+# Audio
+cpal = "0.15"
+rubato = "0.15"
+hound = "3.5"
+
+# Hotkey
+rdev = "0.5"
+
+# Whisper (local STT)
+whisper-rs = { version = "0.13", features = ["coreml", "metal"] }
+
+# Text injection (clipboard write + raw CGEvent for Cmd+V; no enigo to avoid
+# enigo's main-thread-only TSM calls that crash on tokio workers).
+arboard = "3.4"
+
+# Storage
+rusqlite = { version = "0.31", features = ["bundled"] }
+keyring = { version = "3", features = ["apple-native"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP
+reqwest = { version = "0.12", features = ["json", "stream", "multipart", "rustls-tls"], default-features = false }
+
+# Utilities
+anyhow = "1"
+thiserror = "1"
+sha2 = "0.10"
+hex = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+once_cell = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.24"
+objc2 = "0.5"
+objc2-app-kit = { version = "0.2", features = ["NSPasteboard", "NSWorkspace", "NSRunningApplication"] }
+objc2-foundation = { version = "0.2", features = ["NSString", "NSArray", "NSURL"] }
+
+[features]
+# Default ships with CoreML acceleration for Apple Silicon.
+default = []
+# Enable for unit tests that don't link whisper.
+no-whisper = []
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+panic = "abort"
+strip = true

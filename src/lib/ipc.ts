@@ -1,0 +1,101 @@
+import { invoke } from "@tauri-apps/api/core";
+
+export type SttProvider = "local" | "groq" | "open_ai";
+export type PolishProvider = "none" | "local_lite" | "claude" | "groq_llama";
+
+export interface HotkeyBinding {
+  chord: string;
+}
+
+export interface Settings {
+  hotkey: HotkeyBinding;
+  stt_provider: SttProvider;
+  polish_provider: PolishProvider;
+  language: string;
+  model_name: string;
+  microphone_name: string | null;
+  play_start_chime: boolean;
+  play_stop_chime: boolean;
+  auto_paste: boolean;
+  max_recording_seconds: number;
+  onboarding_completed: boolean;
+  paused: boolean;
+  launch_at_login: boolean;
+  telemetry_opted_in: boolean;
+}
+
+export type PermissionStatus = "granted" | "denied" | "not_determined";
+
+export interface PermissionsSnapshot {
+  microphone: PermissionStatus;
+  accessibility: PermissionStatus;
+  input_monitoring: PermissionStatus;
+}
+
+export interface MicrophoneInfo {
+  name: string;
+  is_default: boolean;
+}
+
+export interface TranscriptRow {
+  id: number;
+  raw: string;
+  polished: string;
+  ts: number;
+  duration_ms: number;
+  provider_stt: string;
+  provider_polish: string | null;
+}
+
+export interface CustomWord {
+  id: number;
+  word: string;
+  weight: number;
+  created_at: number;
+}
+
+export interface Replacement {
+  id: number;
+  trigger: string;
+  replacement: string;
+  case_sensitive: boolean;
+}
+
+export type ApiKey = "groq" | "openai" | "anthropic";
+
+export interface ApiKeyStatus {
+  key: ApiKey;
+  configured: boolean;
+}
+
+export const api = {
+  getSettings: () => invoke<Settings>("get_settings"),
+  setSettings: (settings: Settings) => invoke<void>("set_settings", { settings }),
+  checkPermissions: () => invoke<PermissionsSnapshot>("check_permissions"),
+  requestMicrophonePermission: () => invoke<PermissionStatus>("request_microphone_permission"),
+  openSystemSettings: (pane: "microphone" | "accessibility" | "input_monitoring") =>
+    invoke<void>("open_system_settings", { pane }),
+  listMicrophones: () => invoke<MicrophoneInfo[]>("list_microphones"),
+  listHistory: (limit = 20) => invoke<TranscriptRow[]>("list_history", { limit }),
+  clearHistory: () => invoke<void>("clear_history"),
+  listDictionaryWords: () => invoke<CustomWord[]>("list_dictionary_words"),
+  addDictionaryWord: (word: string, weight: number) =>
+    invoke<void>("add_dictionary_word", { word, weight }),
+  deleteDictionaryWord: (id: number) => invoke<void>("delete_dictionary_word", { id }),
+  listReplacements: () => invoke<Replacement[]>("list_replacements"),
+  upsertReplacement: (trigger: string, replacement: string, caseSensitive: boolean) =>
+    invoke<void>("upsert_replacement", { trigger, replacement, caseSensitive }),
+  deleteReplacement: (id: number) => invoke<void>("delete_replacement", { id }),
+  getApiKeyStatus: () => invoke<ApiKeyStatus[]>("get_api_key_status"),
+  setApiKey: (key: ApiKey, value: string) => invoke<void>("set_api_key", { key, value }),
+  deleteApiKey: (key: ApiKey) => invoke<void>("delete_api_key", { key }),
+  setHotkey: (chord: string) => invoke<void>("set_hotkey", { chord }),
+  pauseDictation: () => invoke<void>("pause_dictation"),
+  resumeDictation: () => invoke<void>("resume_dictation"),
+  recheckForUpdates: () => invoke<boolean>("recheck_for_updates"),
+  reinjectTranscript: (id: number) => invoke<void>("reinject_transcript", { id }),
+  recordCorrection: (raw: string, finalText: string) =>
+    invoke<void>("record_correction", { raw, finalText }),
+  openMainWindow: () => invoke<void>("open_main_window"),
+  finishOnboarding: () => invoke<void>("finish_onboarding"),
+};

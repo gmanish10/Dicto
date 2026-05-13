@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+          - runner: macos-13
+            target: x86_64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Download whisper model
+        run: ./scripts/fetch-model.sh ggml-small.en
+
+      - name: Build app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Code signing intentionally not configured for v1; binaries are unsigned.
+          # When you're ready, add APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
+          # APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_TEAM_ID, APPLE_PASSWORD secrets.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Dicto ${{ github.ref_name }}"
+          releaseBody: "See CHANGELOG.md for details. Unsigned build: run `xattr -d com.apple.quarantine /Applications/Dicto.app` after dragging to Applications."
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}
