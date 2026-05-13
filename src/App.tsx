@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { listen } from "@tauri-apps/api/event";
 import { api } from "./lib/ipc";
 import { useSettings } from "./hooks/useSettings";
+import { Logo } from "./components/Logo";
 
 function NavItem({ to, label }: { to: string; label: string }) {
   return (
@@ -53,6 +54,7 @@ export default function App() {
     <div className="flex h-full">
       <aside className="flex w-52 flex-col border-r border-ink-200 bg-ink-50 p-3 dark:border-ink-700 dark:bg-ink-900">
         <Link to="/settings" className="mb-6 flex items-center gap-2 px-2">
+          <Logo size={28} idSuffix="sidebar" />
           <span className="text-lg font-semibold tracking-tight">Dicto</span>
           {settings.paused && <span className="pill-yellow">paused</span>}
         </Link>

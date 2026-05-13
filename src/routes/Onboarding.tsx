@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, PermissionsSnapshot } from "../lib/ipc";
 import { PermissionRow } from "../components/PermissionRow";
+import { Logo } from "../components/Logo";
 
 const initialPerms: PermissionsSnapshot = {
   microphone: "not_determined",
@@ -36,7 +37,10 @@ export default function Onboarding() {
 
   return (
     <div className="mx-auto max-w-2xl p-8">
-      <h1 className="mb-2 text-2xl font-semibold">Welcome to Dicto</h1>
+      <div className="mb-4 flex items-center gap-4">
+        <Logo size={56} idSuffix="onboarding" />
+        <h1 className="text-2xl font-semibold">Welcome to Dicto</h1>
+      </div>
       <p className="mb-6 text-sm text-ink-500 dark:text-ink-300">
         Dicto needs three macOS permissions to work as a global push-to-talk dictation app. Grant
         each in System Settings — the status pills update automatically.

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../lib/ipc";
+import { Logo } from "../components/Logo";
 
 export default function About() {
   const [checking, setChecking] = useState(false);
@@ -20,11 +21,14 @@ export default function About() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Dicto</h1>
-        <p className="text-sm text-ink-500 dark:text-ink-300">
-          A free, open-source push-to-talk dictation app for macOS.
-        </p>
+      <header className="flex items-center gap-4">
+        <Logo size={72} idSuffix="about" />
+        <div>
+          <h1 className="text-2xl font-semibold">Dicto</h1>
+          <p className="text-sm text-ink-500 dark:text-ink-300">
+            A free, open-source push-to-talk dictation app for macOS.
+          </p>
+        </div>
       </header>
 
       <section className="card">
