@@ -18,7 +18,7 @@ Dicto is an open-source alternative to apps like Wispr Flow. It runs entirely on
 
 > Dicto v1 is **unsigned**. macOS Gatekeeper will block it on first launch.
 
-1. Download the latest `.dmg` from [Releases](https://github.com/manishgoyal/Dicto/releases).
+1. Download the latest `.dmg` from [Releases](https://github.com/gmanish10/Dicto/releases).
 2. Open the `.dmg` and drag `Dicto.app` to `/Applications`.
 3. Remove the quarantine flag (one-time):
 
@@ -31,7 +31,9 @@ Dicto is an open-source alternative to apps like Wispr Flow. It runs entirely on
    - **Microphone** — to hear you
    - **Input Monitoring** — so the hotkey works while other apps are focused
    - **Accessibility** — so Dicto can paste into other apps
-5. In Settings, pick a hotkey (default: Right Option) and start talking.
+5. In Settings, pick a hotkey (default: **Fn key**) and start talking.
+
+   > For the Fn-key default to work, set **System Settings → Keyboard → "Press 🌐 key to:" → Do Nothing** so macOS doesn't intercept Fn for emoji/dictation.
 
 > Want a signed/notarized build? See [signing.md](docs/signing.md) — we don't ship signed binaries yet, but the CI workflow is set up to wire it in once an Apple Developer Program account is available.
 
@@ -54,7 +56,7 @@ Hotkey up    →  resample to 16k mono  →  Whisper (local or BYOK)
                               save to ~/Library/Application Support/Dicto/dicto.db
 ```
 
-Tech stack: **Tauri v2** (Rust backend, React+TS frontend), **whisper.cpp** via `whisper-rs` with CoreML feature on Apple Silicon, **cpal** for audio, **rdev** for global hotkey hold-detection (the standard Tauri global-shortcut plugin can't reliably emit key-up for modifier-only chords), **enigo** + **arboard** for clipboard-paste injection.
+Tech stack: **Tauri v2** (Rust backend, React+TS frontend), **whisper.cpp** via `whisper-rs` with CoreML feature on Apple Silicon, **cpal** for audio, a custom **CGEventTap** for global hotkey hold-detection (replaces `rdev`, which panic-aborts in its extern-C callback on macOS 26 keycodes), **arboard** + raw **CGEvent** for clipboard-paste injection (replaces `enigo`, which calls thread-affined TSM APIs from worker threads).
 
 ---
 
@@ -67,7 +69,7 @@ Requirements:
 - [Node.js 20](https://nodejs.org) + [pnpm 9](https://pnpm.io)
 
 ```bash
-git clone https://github.com/manishgoyal/Dicto
+git clone https://github.com/gmanish10/Dicto
 cd Dicto
 pnpm install
 ./scripts/fetch-model.sh ggml-small.en   # ~250 MB, one-time

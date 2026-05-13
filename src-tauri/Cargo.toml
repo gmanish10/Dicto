@@ -5,7 +5,7 @@ description = "A free, open-source push-to-talk dictation app for macOS"
 authors = ["Dicto contributors"]
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/manishgoyal/Dicto"
+repository = "https://github.com/gmanish10/Dicto"
 
 [lib]
 name = "dicto_lib"
