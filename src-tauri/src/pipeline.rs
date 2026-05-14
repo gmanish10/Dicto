@@ -203,6 +203,7 @@ pub fn spawn_coordinator(app: AppHandle, state: SharedState) {
                             if let Some(t) = paste_target {
                                 tracing::debug!(pid = t.pid(), "captured paste target");
                             }
+                            crate::chime::play_start(state_for_loop.config.read().play_start_chime);
                             state_for_loop.set_pipeline_state(PipelineState::Recording);
                             menubar::update_state_indicator(&app_for_loop, &state_for_loop);
                             let _ = app_for_loop.emit("pipeline:recording-started", ());
@@ -220,6 +221,11 @@ pub fn spawn_coordinator(app: AppHandle, state: SharedState) {
                     let Some(started_at) = recording_started_at.take() else {
                         continue;
                     };
+                    // Fire the stop chime the moment the user releases.
+                    // If we waited until after the recorder Stop ack the
+                    // sound would lag behind the actual key release by
+                    // ~50 ms and feel disconnected.
+                    crate::chime::play_stop(state_for_loop.config.read().play_stop_chime);
                     let (result_tx, result_rx) = bounded::<Option<RecordedAudio>>(1);
                     if recorder_for_loop
                         .send(RecCommand::Stop { result: result_tx })

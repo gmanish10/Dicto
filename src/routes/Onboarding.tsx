@@ -47,12 +47,23 @@ export default function Onboarding() {
     setPerms(await api.checkPermissions());
   }, []);
 
-  // Poll permissions only while the permissions step is open.
+  // Poll permissions only while the permissions step is open. We also
+  // re-check on window focus so granting in System Settings and
+  // Cmd-Tabbing back picks up the change immediately, not on the next
+  // 1.5 s tick — macOS sometimes takes a beat to propagate TCC
+  // updates and the polled interval can feel laggy in the meantime.
   useEffect(() => {
     if (stepId !== "permissions") return;
     void refreshPerms();
     const id = setInterval(refreshPerms, 1500);
-    return () => clearInterval(id);
+    const onFocus = () => {
+      void refreshPerms();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [stepId, refreshPerms]);
 
   // While in try-it: subscribe to pipeline:state events and mark the

@@ -62,19 +62,35 @@ pub fn open_settings_pane(pane: &str) -> anyhow::Result<()> {
 // ---------------------------------------------------------------------------
 
 #[cfg(target_os = "macos")]
+#[link(name = "AVFoundation", kind = "framework")]
+extern "C" {
+    static AVMediaTypeAudio: *const objc2::runtime::AnyObject;
+}
+
+#[cfg(target_os = "macos")]
 fn microphone_status() -> PermissionStatus {
-    // Best-effort: try to open a stream. If the system mic is silent, we still
-    // assume "granted" because cpal returned a usable device. If anything in
-    // the chain fails with an OS-level access error, it'll be visible in logs;
-    // the user can verify via System Settings.
-    use cpal::traits::{DeviceTrait, HostTrait};
-    let host = cpal::default_host();
-    match host.default_input_device() {
-        Some(device) => match device.default_input_config() {
-            Ok(_) => PermissionStatus::Granted,
-            Err(_) => PermissionStatus::NotDetermined,
-        },
-        None => PermissionStatus::NotDetermined,
+    // The cpal proxy we used through v0.2.0 returned "granted" whenever
+    // a default input device existed, which on macOS is true even when
+    // the app had never been granted mic TCC. Onboarding therefore
+    // showed mic as granted before the user actually granted it, and
+    // conversely sometimes appeared stuck after a fresh install when
+    // cpal's device enumeration was racy. The reliable signal is the
+    // TCC database itself, queried via AVCaptureDevice
+    // authorizationStatusForMediaType:AVMediaTypeAudio. AVAuthorizationStatus:
+    // 0 = NotDetermined, 1 = Restricted, 2 = Denied, 3 = Authorized.
+    use objc2::msg_send;
+    use objc2::runtime::AnyClass;
+
+    unsafe {
+        let Some(cls) = AnyClass::get("AVCaptureDevice") else {
+            return PermissionStatus::NotDetermined;
+        };
+        let status: i64 = msg_send![cls, authorizationStatusForMediaType: AVMediaTypeAudio];
+        match status {
+            3 => PermissionStatus::Granted,
+            1 | 2 => PermissionStatus::Denied,
+            _ => PermissionStatus::NotDetermined,
+        }
     }
 }
 

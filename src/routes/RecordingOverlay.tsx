@@ -22,19 +22,24 @@ export default function RecordingOverlay() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    const prevBg = document.body.style.background;
-    const prevColor = document.body.style.color;
+    // Override the global Tailwind base layer that paints `html, body,
+    // #root` with `bg-ink-50`. Without resetting #root the overlay
+    // window shows as a solid grey/white rectangle even though the
+    // Tauri window itself is transparent — the pill renders on top of
+    // an opaque DIV that fills the whole window.
+    const root = document.getElementById("root");
+    document.documentElement.style.background = "transparent";
     document.body.style.background = "transparent";
     document.body.style.color = "white";
-    document.documentElement.style.background = "transparent";
+    if (root) {
+      root.style.background = "transparent";
+    }
 
     const unlisten = listen<boolean>("overlay:set-visible", (e) => {
       setVisible(Boolean(e.payload));
     });
 
     return () => {
-      document.body.style.background = prevBg;
-      document.body.style.color = prevColor;
       void unlisten.then((fn) => fn());
     };
   }, []);

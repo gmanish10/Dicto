@@ -40,7 +40,7 @@ export const POLISH_META: Record<PolishProvider, ProviderMeta> = {
     label: "Apple Intelligence",
     sublabel: "free, on your Mac — macOS 26+",
     description:
-      "Cleans up filler words, fixes punctuation, and breaks long speech into sentences. Tries to format obvious lists as bullets but doesn't always — Apple's on-device model is small and trades some output quality for being free and fully private. For sharper bullet/heading formatting, use Claude.",
+      "Cleans up filler words, drops stutter repeats, and adds punctuation. Preserves your phrasing and sentence structure — no rewriting, no auto-formatting into bullets. Runs entirely on your Mac using Apple's on-device model.",
     privacy: "Stays on your Mac. Nothing sent to any server.",
     speed: "About 1.5–2 seconds for short transcripts.",
   },
@@ -71,7 +71,7 @@ export const POLISH_META: Record<PolishProvider, ProviderMeta> = {
     label: "Claude Haiku",
     sublabel: "high quality, needs your Anthropic API key",
     description:
-      "Cloud cleanup using Anthropic's Claude Haiku model. Best output quality for messy transcripts and structured speech.",
+      "Cloud cleanup using Anthropic's Claude Haiku model. Same minimal-edit policy as on-device: removes fillers, drops stutter repeats, adds punctuation. Word choice and sentence structure are preserved exactly.",
     privacy:
       "Each transcript is sent to Anthropic's servers when polishing. Their privacy policy applies.",
     speed: "About half a second to a second.",
@@ -81,7 +81,7 @@ export const POLISH_META: Record<PolishProvider, ProviderMeta> = {
     label: "Groq Llama",
     sublabel: "fast cloud cleanup, needs your Groq API key",
     description:
-      "Cloud cleanup using Groq's Llama model. Very fast; quality slightly below Claude.",
+      "Cloud cleanup using Groq's Llama model. Very fast; same minimal-edit policy as other providers — removes fillers, fixes punctuation, preserves phrasing.",
     privacy:
       "Each transcript is sent to Groq's servers when polishing. Their privacy policy applies.",
     speed: "About 100-300ms.",

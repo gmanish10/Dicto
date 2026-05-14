@@ -1,4 +1,5 @@
 pub mod audio;
+pub mod chime;
 pub mod commands;
 pub mod config;
 pub mod dictionary;

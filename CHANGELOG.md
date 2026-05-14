@@ -6,6 +6,41 @@ All notable changes to Dicto are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-14
+
+Bug-fix release for four regressions reported on v0.2.0.
+
+### Install
+
+**👉 [Download Dicto_0.2.1_aarch64.dmg](https://github.com/gmanish10/Dicto/releases/download/v0.2.1/Dicto_0.2.1_aarch64.dmg)**
+
+Apple Silicon (M-series) only. Existing v0.1.2+ users get this via the built-in
+updater (About → Install and restart). First-time install: drag to `/Applications`,
+then `xattr -d com.apple.quarantine /Applications/Dicto.app` once.
+
+### Fixed
+- **"Listening" overlay invisible.** The new overlay pill in v0.2.0 was hidden
+  behind a solid background — the global Tailwind base layer painted `#root`
+  with `bg-ink-50`, covering the transparent Tauri window with a grey/white
+  rectangle. The overlay route now also resets `#root` to transparent, so the
+  pill paints correctly. (Fullscreen-app limitation from v0.2.0 unchanged.)
+- **Start/stop chimes silent.** The Settings toggle and config field existed
+  in v0.2.0 but no playback code was actually wired. Dicto now plays Tink on
+  recording start and Pop on release via `afplay` with macOS system sounds.
+- **Onboarding mic permission detection.** The mic check used cpal's
+  `default_input_config()` as a proxy for TCC state, which returns Ok even
+  when permission has never been granted. Dicto now calls
+  `AVCaptureDevice.authorizationStatusForMediaType:AVMediaTypeAudio` to read
+  the actual TCC entry. Onboarding also re-checks permissions on window focus
+  so granting in System Settings is picked up the instant you Cmd-Tab back.
+- **Polish was rewriting style.** v0.2.0's polish prompt told the model to
+  split long sentences into 12-20 word chunks and convert any enumeration
+  ("three things…") into a markdown bullet list. Users reported it was
+  changing their phrasing and structure. v0.2.1 walks the prompt back to
+  pure hygiene: remove fillers, drop stutter repeats, fix capitalization,
+  add punctuation. Word choice and sentence structure are preserved exactly,
+  and bullets are never auto-inferred.
+
 ## [0.2.0] - 2026-05-14
 
 Feature release. On-device LLM cleanup, multi-step onboarding, a floating
