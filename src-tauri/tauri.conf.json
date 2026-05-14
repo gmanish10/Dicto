@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Dicto",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "identifier": "com.dicto.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -29,6 +29,22 @@
         "alwaysOnTop": false,
         "focus": true,
         "titleBarStyle": "Visible"
+      },
+      {
+        "label": "recording-overlay",
+        "title": "Dicto recording",
+        "url": "index.html#/overlay",
+        "width": 220,
+        "height": 40,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "visible": true,
+        "focus": false,
+        "skipTaskbar": true,
+        "acceptFirstMouse": false
       }
     ],
     "security": {

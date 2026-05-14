@@ -29,6 +29,7 @@ export interface Settings {
   paused: boolean;
   launch_at_login: boolean;
   telemetry_opted_in: boolean;
+  show_recording_overlay: boolean;
 }
 
 export type PermissionStatus = "granted" | "denied" | "not_determined";

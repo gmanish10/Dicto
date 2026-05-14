@@ -105,6 +105,25 @@ export default function Settings() {
                 Play stop chime
               </label>
             </div>
+
+            <div className="card">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={settings.show_recording_overlay}
+                  onChange={(e) =>
+                    update({ show_recording_overlay: e.target.checked })
+                  }
+                />
+                <span>
+                  Show recording indicator
+                  <span className="ml-2 text-xs text-ink-400">
+                    A small pill at the top of the screen while you're holding the hotkey, so you always know Dicto is listening. Note: macOS hides floating windows over native-fullscreen apps; the start/stop chime still plays.
+                  </span>
+                </span>
+              </label>
+            </div>
           </div>
         </section>
 

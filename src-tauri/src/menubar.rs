@@ -155,7 +155,14 @@ fn handle_menu_event(app: &AppHandle, state: &SharedState, id: &str) {
 
 pub fn update_state_indicator(app: &AppHandle, state: &SharedState) {
     update_tooltip(app, state);
-    let _ = app.emit("pipeline:state", *state.pipeline_state.read() as i32);
+    let pipeline = *state.pipeline_state.read();
+    let _ = app.emit("pipeline:state", pipeline as i32);
+
+    // The always-on-top "Recording" pill is driven from the same hook:
+    // every set_pipeline_state caller already invokes this function, so
+    // the overlay can never drift out of sync with the tooltip.
+    let show_overlay = state.config.read().show_recording_overlay;
+    crate::overlay::sync_for_state(app, pipeline, show_overlay);
 }
 
 fn update_tooltip(app: &AppHandle, state: &SharedState) {

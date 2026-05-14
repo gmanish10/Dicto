@@ -62,6 +62,10 @@ pub struct Settings {
     pub paused: bool,
     pub launch_at_login: bool,
     pub telemetry_opted_in: bool,
+    /// Show the floating "Recording" pill above all apps while the
+    /// hotkey is held. Defaults on — visible feedback that Dicto is
+    /// listening is the right default for a hold-to-talk app.
+    pub show_recording_overlay: bool,
 }
 
 impl Settings {
@@ -81,6 +85,7 @@ impl Settings {
             paused: false,
             launch_at_login: false,
             telemetry_opted_in: false,
+            show_recording_overlay: true,
         }
     }
 }
@@ -181,6 +186,11 @@ fn merge_into_defaults(value: serde_json::Value) -> Settings {
     pick(&map, "paused", &mut settings.paused);
     pick(&map, "launch_at_login", &mut settings.launch_at_login);
     pick(&map, "telemetry_opted_in", &mut settings.telemetry_opted_in);
+    pick(
+        &map,
+        "show_recording_overlay",
+        &mut settings.show_recording_overlay,
+    );
 
     settings
 }

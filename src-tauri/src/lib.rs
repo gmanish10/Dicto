@@ -9,6 +9,7 @@ pub mod keychain;
 pub mod menubar;
 pub mod model;
 pub mod notify;
+pub mod overlay;
 pub mod permissions;
 pub mod pipeline;
 pub mod polish;
@@ -42,6 +43,11 @@ pub fn run() {
             app.manage(app_state.clone());
 
             menubar::install(&handle, app_state.clone())?;
+            // Configure the floating recording-overlay window once,
+            // before any fullscreen Space is entered. The window stays
+            // visible at the OS layer; React decides whether to paint
+            // the pill based on `overlay:set-visible` events.
+            overlay::init(&handle);
             pipeline::spawn_coordinator(handle.clone(), app_state.clone());
 
             // If the bundled LLM model is already on disk from a previous
