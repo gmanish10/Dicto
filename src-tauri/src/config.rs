@@ -13,12 +13,22 @@ pub enum SttProvider {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PolishProvider {
+    /// Picks the best free option available on this Mac at runtime.
+    /// Resolver order: AppleIntelligence → BundledLlm → LocalLite (Enhanced).
+    #[default]
+    Auto,
     /// No polishing; raw whisper output is injected as-is.
     None,
-    /// Lightweight on-device cleanup (strip "um", "uh", repeated words).
-    #[default]
+    /// Lightweight on-device cleanup (heuristics: fillers, repeats, capitalization).
     LocalLite,
+    /// On-device LLM polish via Apple Intelligence Foundation Models framework.
+    /// Requires macOS 26+ on Apple Silicon with Apple Intelligence enabled.
+    AppleIntelligence,
+    /// On-device LLM polish via a small Qwen model. Downloaded on first use (~940 MB).
+    BundledLlm,
+    /// Cloud LLM polish via Anthropic Claude Haiku. Needs an API key.
     Claude,
+    /// Cloud LLM polish via Groq Llama. Needs an API key.
     GroqLlama,
 }
 
@@ -72,6 +82,21 @@ impl Settings {
             launch_at_login: false,
             telemetry_opted_in: false,
         }
+    }
+}
+
+/// Plain-language label for a polish provider, suitable for user-facing
+/// toasts and inline help. Mirrors `src/lib/polishLabels.ts` on the frontend
+/// but used in Rust-side messages (e.g., the silent-downgrade toast).
+pub fn provider_display_name(p: PolishProvider) -> &'static str {
+    match p {
+        PolishProvider::Auto => "Best available",
+        PolishProvider::None => "No cleanup",
+        PolishProvider::LocalLite => "Basic cleanup",
+        PolishProvider::AppleIntelligence => "Apple Intelligence",
+        PolishProvider::BundledLlm => "On-device LLM",
+        PolishProvider::Claude => "Claude Haiku",
+        PolishProvider::GroqLlama => "Groq Llama",
     }
 }
 

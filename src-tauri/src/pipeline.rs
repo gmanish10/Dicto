@@ -1,14 +1,10 @@
 use crate::{
     audio::{recorder::Recorder, resample},
-    config::{PolishProvider, SttProvider},
+    config::{provider_display_name, SttProvider},
     dictionary, hotkey,
     inject::{paste::ClipboardPasteInjector, Injector},
     keychain::{self, ApiKey},
     menubar,
-    polish::{
-        claude::ClaudePolisher, groq_llama::GroqLlamaPolisher, local_lite::LocalLitePolisher,
-        noop::NoOpPolisher, Polisher,
-    },
     state::{PipelineState, SharedState},
     transcribe::{
         groq::GroqTranscriber, local::LocalWhisper, openai::OpenAiTranscriber, Transcriber,
@@ -342,22 +338,22 @@ async fn run_utterance(
         return Ok(());
     }
 
-    // Polish.
+    // Polish — delegate provider selection + fallback to the resolver.
     let polish_provider = state.config.read().polish_provider;
     let recent_corrections = state.history.recent_corrections(5).unwrap_or_default();
+    let resolution = crate::polish::resolve(polish_provider, &state.polish_ctx.read());
+    let polisher = resolution.polisher;
 
-    let polisher: Box<dyn Polisher> = match polish_provider {
-        PolishProvider::None => Box::new(NoOpPolisher),
-        PolishProvider::LocalLite => Box::new(LocalLitePolisher),
-        PolishProvider::Claude => match keychain::get(ApiKey::Anthropic) {
-            Some(key) => Box::new(ClaudePolisher::new(key)),
-            None => Box::new(LocalLitePolisher),
-        },
-        PolishProvider::GroqLlama => match keychain::get(ApiKey::Groq) {
-            Some(key) => Box::new(GroqLlamaPolisher::new(key)),
-            None => Box::new(LocalLitePolisher),
-        },
-    };
+    if let Some(requested) = resolution.downgraded_from {
+        let _ = app.emit(
+            "pipeline:toast",
+            format!(
+                "{} cleanup wasn't available — used {} instead. Adjust in Settings → Cleanup.",
+                provider_display_name(requested),
+                provider_display_name(resolution.effective),
+            ),
+        );
+    }
 
     let polished = match polisher.polish(&raw, &recent_corrections).await {
         Ok(text) => text,

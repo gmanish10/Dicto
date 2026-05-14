@@ -1,4 +1,4 @@
-use crate::{config::Settings, history::HistoryStore, hotkey::HotkeyEvent};
+use crate::{config::Settings, history::HistoryStore, hotkey::HotkeyEvent, polish::PolishContext};
 use crossbeam_channel::{Receiver, Sender};
 use parking_lot::RwLock;
 use std::path::PathBuf;
@@ -19,6 +19,9 @@ pub struct AppState {
     pub config: RwLock<Settings>,
     pub pipeline_state: RwLock<PipelineState>,
     pub history: HistoryStore,
+    /// Cached polish provider clients (Apple Intelligence sidecar, bundled
+    /// LLM context). The resolver reads from this on every utterance.
+    pub polish_ctx: RwLock<PolishContext>,
     /// rdev producer side (set by hotkey::listener when it starts).
     pub hotkey_tx: Sender<HotkeyEvent>,
     pub hotkey_rx: Receiver<HotkeyEvent>,
@@ -41,6 +44,7 @@ impl AppState {
             config: RwLock::new(settings),
             pipeline_state: RwLock::new(PipelineState::Idle),
             history,
+            polish_ctx: RwLock::new(PolishContext::empty()),
             hotkey_tx: tx,
             hotkey_rx: rx,
         })

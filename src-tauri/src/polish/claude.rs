@@ -1,6 +1,4 @@
-use super::{
-    build_few_shot_block, build_system_prompt, sanity_check, Correction, PolishError, Polisher,
-};
+use super::{build_full_system, sanity_check, Correction, PolishError, Polisher};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -48,7 +46,7 @@ struct ContentBlock {
 #[async_trait]
 impl Polisher for ClaudePolisher {
     async fn polish(&self, raw: &str, recent: &[Correction]) -> Result<String, PolishError> {
-        let system = format!("{}{}", build_system_prompt(), build_few_shot_block(recent));
+        let system = build_full_system(recent);
         let req = Request {
             model: MODEL,
             // Polish should never balloon — cap roughly proportional to input.

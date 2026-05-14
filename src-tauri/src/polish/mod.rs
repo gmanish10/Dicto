@@ -2,6 +2,11 @@ pub mod claude;
 pub mod groq_llama;
 pub mod local_lite;
 pub mod noop;
+pub mod prompt;
+pub mod resolver;
+
+pub use prompt::{build_few_shot_block, build_full_system, SYSTEM_PROMPT};
+pub use resolver::{resolve, PolishContext};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -67,33 +72,5 @@ pub fn sanity_check(raw: &str, polished: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-pub(crate) fn build_system_prompt() -> &'static str {
-    "You are a transcript polisher. Your job is to clean a raw speech-to-text \
-     transcript so that it reads naturally as written text. Apply these rules: \n\
-     1. Remove disfluencies: um, uh, like (when used as a filler), you know (as a filler), \
-        sort of (as a filler), basically (as a filler), I mean (as a filler).\n\
-     2. Remove false starts and repeated words (e.g., \"the the\" → \"the\").\n\
-     3. Add appropriate punctuation and capitalization.\n\
-     4. Preserve all meaning, technical terms, proper nouns, and the speaker's \
-        intent verbatim. Do not add new content or commentary.\n\
-     5. If the speaker explicitly dictates punctuation or symbols (e.g., \"period\", \
-        \"comma\", \"newline\"), leave them as text; downstream replacements handle these.\n\
-     6. Output ONLY the cleaned transcript. No prefacing, no quotation marks around it, \
-        no explanation."
-}
-
-pub(crate) fn build_few_shot_block(recent: &[Correction]) -> String {
-    if recent.is_empty() {
-        return String::new();
-    }
-    let mut s =
-        String::from("\n\nExamples of how this user previously polished their transcripts:\n");
-    for c in recent.iter().take(5) {
-        s.push_str(&format!(
-            "- Raw: {}\n  Final: {}\n",
-            c.raw.replace('\n', " ").trim(),
-            c.final_text.replace('\n', " ").trim()
-        ));
-    }
-    s
-}
+// Polish system prompt + few-shot helpers live in `prompt.rs`.
+// Re-exported above so existing callers keep compiling.
