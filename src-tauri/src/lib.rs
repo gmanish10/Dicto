@@ -8,6 +8,7 @@ pub mod inject;
 pub mod keychain;
 pub mod menubar;
 pub mod model;
+pub mod notify;
 pub mod permissions;
 pub mod pipeline;
 pub mod polish;
@@ -33,6 +34,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
 

@@ -345,14 +345,13 @@ async fn run_utterance(
     let polisher = resolution.polisher;
 
     if let Some(requested) = resolution.downgraded_from {
-        let _ = app.emit(
-            "pipeline:toast",
-            format!(
-                "{} cleanup wasn't available — used {} instead. Adjust in Settings → Cleanup.",
-                provider_display_name(requested),
-                provider_display_name(resolution.effective),
-            ),
+        let toast = format!(
+            "{} cleanup wasn't available — used {} instead. Adjust in Settings → Cleanup.",
+            provider_display_name(requested),
+            provider_display_name(resolution.effective),
         );
+        let _ = app.emit("pipeline:toast", toast.clone());
+        crate::notify::notify_if_hidden(&app, "Dicto — cleanup fell back", &toast);
     }
 
     let polished = match polisher.polish(&raw, &recent_corrections).await {
@@ -377,10 +376,9 @@ async fn run_utterance(
     match injector.inject(&injectable) {
         Ok(()) => {}
         Err(crate::inject::InjectError::SecureInputActive) => {
-            let _ = app.emit(
-                "pipeline:toast",
-                "Secure input detected — text copied to clipboard.",
-            );
+            let msg = "Secure input detected — text copied to clipboard.";
+            let _ = app.emit("pipeline:toast", msg);
+            crate::notify::notify_if_hidden(&app, "Dicto — paste blocked", msg);
         }
         Err(e) => return Err(e.into()),
     }
