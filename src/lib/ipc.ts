@@ -86,8 +86,13 @@ export interface BundledLlmStatus {
   downloading: DownloadProgress | null;
 }
 
+export interface AppleIntelligenceStatus {
+  available: boolean;
+}
+
 export interface PolishAvailability {
   bundled_llm: BundledLlmStatus;
+  apple_intelligence: AppleIntelligenceStatus;
 }
 
 export const api = {

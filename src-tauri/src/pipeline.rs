@@ -367,9 +367,14 @@ async fn run_utterance(
     let replacements = state.history.list_replacements().unwrap_or_default();
     let final_text = dictionary::apply_replacements(&polished, &replacements);
 
+    // For the actual paste, append a trailing space or newline so the
+    // user can keep dictating without manual cursor work. History keeps
+    // the un-suffixed `final_text` for clean re-reads.
+    let injectable = crate::inject::format_for_injection(&final_text);
+
     // Inject into the focused app.
     let injector = ClipboardPasteInjector;
-    match injector.inject(&final_text) {
+    match injector.inject(&injectable) {
         Ok(()) => {}
         Err(crate::inject::InjectError::SecureInputActive) => {
             let _ = app.emit(

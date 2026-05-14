@@ -17,6 +17,7 @@
 use std::sync::Arc;
 
 use super::{
+    apple_intelligence::AppleIntelligencePolisher,
     bundled_llm::{manifest as bundled_llm_manifest, BundledLlmPolisher},
     claude::ClaudePolisher,
     groq_llama::GroqLlamaPolisher,
@@ -51,6 +52,67 @@ impl PolishContext {
     pub fn set_bundled_llm(&mut self, polisher: Option<Arc<dyn Polisher>>) {
         self.bundled_llm = polisher;
     }
+
+    /// Set / clear the Apple Intelligence client. Called at startup when
+    /// the sidecar binary is present and we're on macOS 26+.
+    pub fn set_apple_ai(&mut self, polisher: Option<Arc<dyn Polisher>>) {
+        self.apple_ai = polisher;
+    }
+}
+
+/// Locate the Apple Intelligence sidecar binary. Returns `Some(polisher)`
+/// when the binary is on disk and we're on macOS 26+ (the sidecar itself
+/// reports availability of the underlying Foundation Models framework
+/// on first spawn).
+///
+/// Lookup order:
+/// 1. `<exe-dir>/dicto-apple-polish` — production bundle layout (Tauri
+///    places `externalBin` here, stripping the platform suffix).
+/// 2. `<exe-dir>/dicto-apple-polish-<target-triple>` — Tauri dev layout.
+/// 3. `<workspace>/src-tauri/binaries/dicto-apple-polish-<target-triple>`
+///    — dev fallback if the binary hasn't been copied next to the exe.
+///
+/// Returns `None` on older macOS — the sidecar would fail at runtime, so
+/// we don't even register the provider.
+pub fn try_construct_apple_intelligence(_app: &AppHandle) -> Option<Arc<dyn Polisher>> {
+    if !is_macos_26_or_newer() {
+        return None;
+    }
+    let bin = locate_apple_polish_binary()?;
+    Some(Arc::new(AppleIntelligencePolisher::new(bin)))
+}
+
+#[cfg(target_os = "macos")]
+fn is_macos_26_or_newer() -> bool {
+    let info = std::process::Command::new("/usr/bin/sw_vers")
+        .arg("-productVersion")
+        .output()
+        .ok();
+    let Some(out) = info else { return false };
+    let version = String::from_utf8_lossy(&out.stdout);
+    let major: u32 = version.trim().split('.').next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    major >= 26
+}
+
+#[cfg(not(target_os = "macos"))]
+fn is_macos_26_or_newer() -> bool {
+    false
+}
+
+fn locate_apple_polish_binary() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+
+    let exe = std::env::current_exe().ok()?;
+    let exe_dir = exe.parent()?;
+    let triple_suffix = format!("dicto-apple-polish-{}", env!("DICTO_TARGET_TRIPLE"));
+
+    let candidates = [
+        exe_dir.join("dicto-apple-polish"),
+        exe_dir.join(&triple_suffix),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("binaries").join(&triple_suffix),
+    ];
+
+    candidates.into_iter().find(|p| p.exists())
 }
 
 /// Check whether the bundled-LLM model exists on disk; if so, construct
@@ -58,7 +120,20 @@ impl PolishContext {
 ///
 /// Cheap: just an `exists()` check + a few struct allocations. Safe to
 /// call at startup and after download completes.
-pub fn try_construct_bundled_llm(app: &AppHandle) -> Option<Arc<dyn Polisher>> {
+///
+/// **Disabled for v0.2.0.** The polisher itself is fully wired, but
+/// llama-cpp-2 0.1.146 miscompiles tensor reads on macOS 26 (Tahoe) and
+/// rejects valid GGUFs as "duplicated" — see the `bundled_llm` entry in
+/// `polishLabels.ts` for the full note. Returning `None` here keeps the
+/// resolver from registering a polisher that would fail at run time;
+/// once upstream ships a fix, drop this early return and the feature
+/// unflags itself end-to-end.
+pub fn try_construct_bundled_llm(_app: &AppHandle) -> Option<Arc<dyn Polisher>> {
+    None
+}
+
+#[allow(dead_code)]
+fn _try_construct_bundled_llm_when_unblocked(app: &AppHandle) -> Option<Arc<dyn Polisher>> {
     let path = crate::model::resolve_file(app, bundled_llm_manifest::QWEN_FILENAME).ok()?;
     Some(Arc::new(BundledLlmPolisher::new(path)))
 }

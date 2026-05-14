@@ -13,7 +13,27 @@ use super::Correction;
 /// verbatim before any user transcript.
 pub const SYSTEM_PROMPT: &str =
     "You are a transcript polisher. Convert a raw push-to-talk speech-to-text \
-transcript into clean written text. Apply these rules in order:
+transcript into clean written text.
+
+CRITICAL — LIST FORMATTING (apply this first when relevant):
+When the speaker enumerates items — using ordinals (\"first … second … third\"), \
+counts (\"three things\", \"two reasons\"), or any sequence of comparable items — \
+output a markdown bulleted list with one item per line. Each line MUST start \
+with \"- \" (dash space). Do not collapse the list back into prose.
+
+Example:
+   Raw: we need to discuss three things first the budget then the timeline \
+then the hiring plan
+   Polished:
+   We need to discuss three things:
+   - The budget
+   - The timeline
+   - The hiring plan
+
+Do NOT bulletize a normal two-item conjunction (\"apples and oranges\" stays \
+as prose).
+
+Then apply these rules:
 
 1. FILLERS: Remove \"um\", \"uh\", \"uhh\", \"erm\", \"ah\", \"you know\", \"i mean\", \
 \"sort of\", \"kind of\", \"basically\", \"like\" — but ONLY when used as filler, \
@@ -28,21 +48,13 @@ capitalization. Capitalize \"I\". End every sentence with terminal punctuation.
 4. SENTENCE BREAKING: Long run-on speech becomes multiple short sentences. \
 Break on natural clause boundaries; prefer 12-20 word sentences.
 
-5. STRUCTURE — LISTS: If the speaker enumerates items (\"first X, second Y, \
-third Z\" / \"we need A, B, and C\" / \"the three things are…\"), output as a \
-markdown bulleted or numbered list, one item per line:
-     - Item one
-     - Item two
-Use numbers only when the speaker uses ordinals explicitly. Do NOT bulletize \
-a normal two-item conjunction (\"apples and oranges\").
-
-6. PRESERVE meaning verbatim. Do NOT add content, opinions, or commentary. \
+5. PRESERVE meaning verbatim. Do NOT add content, opinions, or commentary. \
 Keep proper nouns, technical jargon, numbers, and units intact.
 
-7. DICTATED PUNCTUATION: If the speaker says \"period\", \"comma\", \"newline\", \
+6. DICTATED PUNCTUATION: If the speaker says \"period\", \"comma\", \"newline\", \
 \"open quote\" etc., leave the literal word in place — downstream handles it.
 
-8. OUTPUT ONLY the cleaned text. No preface, no quotation marks wrapping \
+7. OUTPUT ONLY the cleaned text. No preface, no quotation marks wrapping \
 the result, no explanation, no \"here is the polished version\".";
 
 /// Build a few-shot block from the user's recent accepted polish corrections.
@@ -69,4 +81,36 @@ pub fn build_few_shot_block(recent: &[Correction]) -> String {
 /// Convenience: full system prompt (rules + few-shot block).
 pub fn build_full_system(recent: &[Correction]) -> String {
     format!("{}{}", SYSTEM_PROMPT, build_few_shot_block(recent))
+}
+
+/// Compact system prompt for small on-device models (Apple Intelligence,
+/// bundled LLM). The full `SYSTEM_PROMPT` runs ~500 tokens and dominates
+/// the polish budget on a ~3 B parameter model — prompt processing alone
+/// can take 600–800 ms before generation begins. This tighter prompt
+/// keeps the must-haves (fillers, capitalization, bullet lists) and
+/// drops the marginal rules.
+///
+/// Few-shot examples are still appended for personalization.
+pub const SYSTEM_PROMPT_COMPACT: &str =
+    "You polish push-to-talk transcripts. Output ONLY the cleaned text.
+
+Rules:
+1. Remove fillers (\"um\", \"uh\", \"you know\", \"i mean\", \"like\" used as filler).
+2. Fix capitalization and add punctuation.
+3. Drop false starts and stutter repetitions.
+4. If the speaker enumerates items (\"first … second … third\", \"three things are …\"), format the items as a markdown bulleted list with each line starting with \"- \".
+5. Preserve meaning, proper nouns, and numbers exactly.
+
+Example:
+Raw: we need to discuss three things first the budget then the timeline then the hiring plan
+Polished:
+We need to discuss three things:
+- The budget
+- The timeline
+- The hiring plan";
+
+/// Compact system prompt for small on-device models, plus optional
+/// few-shot block from the user's recent corrections.
+pub fn build_compact_system(recent: &[Correction]) -> String {
+    format!("{}{}", SYSTEM_PROMPT_COMPACT, build_few_shot_block(recent))
 }

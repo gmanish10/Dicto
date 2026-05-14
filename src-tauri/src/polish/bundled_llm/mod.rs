@@ -79,6 +79,16 @@ impl BundledLlmPolisher {
 
     /// Load + cache the LlamaModel if we haven't already. Cheap on repeat
     /// calls.
+    ///
+    /// macOS 26 ships a Metal toolchain that miscompiles llama.cpp's bundled
+    /// shaders (same issue that hit whisper.cpp earlier this year — its
+    /// `ggml_backend_metal_init` returns an unusable context and the
+    /// subsequent CPU retry inherits the corrupted global state, surfacing
+    /// as a bogus "tensor 'token_embd.weight' is duplicated" error). To
+    /// avoid that minefield we load CPU-only unconditionally for now;
+    /// inference for a typical transcript on M-series is ~1–2 s, well
+    /// within the polish-budget. Revisit when upstream llama.cpp ships a
+    /// fix for the macOS 26 Metal toolchain.
     fn ensure_loaded(&self) -> Result<Arc<LlamaModel>, PolishError> {
         if let Some(m) = self.model.lock().as_ref() {
             return Ok(m.clone());
@@ -90,9 +100,21 @@ impl BundledLlmPolisher {
             )));
         }
         let backend = backend()?;
-        let params = LlamaModelParams::default().with_n_gpu_layers(u32::MAX);
+
+        // CPU-only + no-mmap. macOS 26 ships a Metal toolchain that
+        // miscompiles llama.cpp's shaders, and llama.cpp's mmap reader on
+        // Tahoe has been reported to drop bytes intermittently — both
+        // surfacing as bogus "tensor 'X' is duplicated" errors (the
+        // duplicate-detection map gets fooled by garbled tensor names from
+        // a partial read). Forcing a full read into RAM via use_mmap(false)
+        // is slower at load time (~1 GB read once) but stable.
+        let params = LlamaModelParams::default()
+            .with_n_gpu_layers(0)
+            .with_use_mmap(false);
         let loaded = LlamaModel::load_from_file(&backend, &self.model_path, &params)
             .map_err(|e| PolishError::Api(format!("llama model load: {e}")))?;
+        tracing::info!("bundled LLM loaded CPU-only (no mmap)");
+
         let arc = Arc::new(loaded);
         *self.model.lock() = Some(arc.clone());
         Ok(arc)

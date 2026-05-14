@@ -214,8 +214,9 @@ pub fn reinject_transcript(state: State<'_, SharedState>, id: i64) -> Result<(),
         .get_transcript(id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "transcript not found".to_string())?;
+    let injectable = crate::inject::format_for_injection(&row.polished);
     crate::inject::paste::ClipboardPasteInjector
-        .inject(&row.polished)
+        .inject(&injectable)
         .map_err(|e| e.to_string())
 }
 
@@ -250,12 +251,13 @@ pub fn finish_onboarding(state: State<'_, SharedState>) -> Result<(), String> {
 
 use crate::polish::bundled_llm::manifest as bundled_llm_manifest;
 
-/// Front-end-facing snapshot of polish-tier availability. Today only the
-/// bundled-LLM has interesting state (downloaded? downloading?). Apple
-/// Intelligence will join this struct when it lands ([#5]).
+/// Front-end-facing snapshot of polish-tier availability. Each on-device
+/// engine reports whether it's usable on this machine so the Settings UI
+/// can show meaningful status pills (Ready / Needs download / macOS 26+).
 #[derive(Serialize)]
 pub struct PolishAvailability {
     pub bundled_llm: BundledLlmStatus,
+    pub apple_intelligence: AppleIntelligenceStatus,
 }
 
 #[derive(Serialize)]
@@ -266,6 +268,17 @@ pub struct BundledLlmStatus {
     pub size_mb: u32,
     /// `Some` while a download is in flight, `None` otherwise.
     pub downloading: Option<DownloadProgress>,
+}
+
+/// Snapshot of the Apple Intelligence backend's readiness. `available`
+/// is true iff the resolver succeeded in registering the polisher at
+/// startup — which requires macOS 26+ *and* the bundled sidecar binary
+/// being present. The final "Apple Intelligence is enabled by the user"
+/// check happens on the sidecar's first spawn; we don't surface it here
+/// because it would require eagerly spawning the sidecar at app start.
+#[derive(Serialize)]
+pub struct AppleIntelligenceStatus {
+    pub available: bool,
 }
 
 #[derive(Serialize, Clone, Copy)]
@@ -282,11 +295,15 @@ pub fn check_polish_availability(
 ) -> PolishAvailability {
     let downloaded = crate::model::resolve_file(&app, bundled_llm_manifest::QWEN_FILENAME).is_ok();
     let downloading = *state.polish_model_download.read();
+    let apple_intelligence_available = state.polish_ctx.read().apple_ai.is_some();
     PolishAvailability {
         bundled_llm: BundledLlmStatus {
             downloaded,
             size_mb: bundled_llm_manifest::QWEN_SIZE_MB,
             downloading,
+        },
+        apple_intelligence: AppleIntelligenceStatus {
+            available: apple_intelligence_available,
         },
     }
 }

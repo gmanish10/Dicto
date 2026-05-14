@@ -38,17 +38,21 @@ export const POLISH_META: Record<PolishProvider, ProviderMeta> = {
   },
   apple_intelligence: {
     label: "Apple Intelligence",
-    sublabel: "free, on your Mac",
+    sublabel: "free, on your Mac — macOS 26+",
     description:
-      "Cleans up filler words, fixes punctuation, breaks long speech into sentences, and formats lists as bullet points. Uses Apple's on-device writing model.",
-    privacy: "Stays on your Mac.",
-    speed: "About 300ms.",
+      "Cleans up filler words, fixes punctuation, and breaks long speech into sentences. Tries to format obvious lists as bullets but doesn't always — Apple's on-device model is small and trades some output quality for being free and fully private. For sharper bullet/heading formatting, use Claude.",
+    privacy: "Stays on your Mac. Nothing sent to any server.",
+    speed: "About 1.5–2 seconds for short transcripts.",
   },
-  // Hidden from the dropdown until the engine ships (Step 4). The enum value
-  // still exists in Rust + TypeScript for forward compatibility.
+  // Hidden from the dropdown for v0.2.0: the Rust/UI plumbing is complete,
+  // but llama-cpp-2 0.1.146 on macOS 26 (Tahoe) miscompiles a tensor read
+  // and rejects valid GGUFs as "duplicated", which blocks the feature at
+  // runtime. The Foundation Models option (`apple_intelligence`) covers
+  // the same use case natively on macOS 26 and is shipping in its place.
+  // Revisit when upstream llama-cpp-2 fixes the Tahoe regression.
   bundled_llm: {
     label: "On-device cleanup model",
-    sublabel: "free, 940 MB one-time download",
+    sublabel: "coming in a later release",
     description:
       "Smart cleanup using Qwen 2.5, a small language model that runs entirely on your computer. Removes filler words, fixes punctuation, breaks long speech into sentences, and formats lists as bullet points when appropriate.",
     privacy: "Stays on your Mac. Nothing sent to any server.",
@@ -110,13 +114,16 @@ export const PROVIDER_ORDER: PolishProvider[] = [
 
 /**
  * Subset of providers shown in the Settings dropdown right now.
- * `apple_intelligence` is hidden until the Swift sidecar ships (#5).
+ *
+ * Hidden:
+ * - `bundled_llm` for v0.2.0 — runtime blocked by an upstream llama-cpp-2
+ *   regression on macOS 26 Tahoe (#4 will reopen when that's fixed).
  *
  * Update this list as features land; the rest of the metadata is ready.
  */
 export const VISIBLE_PROVIDERS: PolishProvider[] = [
   "auto",
-  "bundled_llm",
+  "apple_intelligence",
   "local_lite",
   "claude",
   "groq_llama",

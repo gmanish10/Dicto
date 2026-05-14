@@ -50,4 +50,9 @@
   .pill-green { @apply pill bg-green-100 text-green-700; }
   .pill-red { @apply pill bg-red-100 text-red-700; }
   .pill-yellow { @apply pill bg-yellow-100 text-yellow-700; }
+  .kbd {
+    @apply inline-flex items-center rounded-md border border-ink-300 bg-ink-100 px-1.5 py-0.5
+           font-mono text-[11px] text-ink-700 shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.05)]
+           dark:border-ink-600 dark:bg-ink-700 dark:text-ink-100;
+  }
 }

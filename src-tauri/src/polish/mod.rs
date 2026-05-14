@@ -1,3 +1,4 @@
+pub mod apple_intelligence;
 pub mod bundled_llm;
 pub mod claude;
 pub mod groq_llama;
@@ -7,7 +8,9 @@ pub mod prompt;
 pub mod resolver;
 
 pub use prompt::{build_few_shot_block, build_full_system, SYSTEM_PROMPT};
-pub use resolver::{resolve, try_construct_bundled_llm, PolishContext};
+pub use resolver::{
+    resolve, try_construct_apple_intelligence, try_construct_bundled_llm, PolishContext,
+};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -57,16 +60,26 @@ pub fn sanity_check(raw: &str, polished: &str) -> Result<(), &'static str> {
     if pol_len < raw_len / 4 && raw_len > 40 {
         return Err("output is less than 25% of the raw length");
     }
+    // Refusal detection: only flag when the refusal language appears as
+    // the *opening* of the polish, which is where real model refusals
+    // live ("I can't help with that.", "As an AI, I cannot…"). Anywhere
+    // else in the text is overwhelmingly going to be the speaker
+    // actually saying the phrase ("I can't believe how much we covered"),
+    // not a refusal. The earlier `contains()` check produced false
+    // positives often enough to be a real footgun.
     let lowered = polished.to_ascii_lowercase();
+    let head = lowered.get(..lowered.len().min(80)).unwrap_or("");
     for refusal in [
-        "i can't",
-        "i cannot",
-        "i'm unable",
-        "i am unable",
+        "i can't help",
+        "i cannot help",
+        "i'm unable to",
+        "i am unable to",
         "as an ai",
-        "i don't have",
+        "i don't have the ability",
+        "sorry, i can't",
+        "sorry, i cannot",
     ] {
-        if lowered.contains(refusal) {
+        if head.starts_with(refusal) || head.contains(&format!(". {refusal}")) {
             return Err("refusal pattern detected");
         }
     }

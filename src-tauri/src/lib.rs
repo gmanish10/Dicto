@@ -50,6 +50,15 @@ pub fn run() {
                 tracing::info!("bundled LLM model detected; resolver will route to it");
             }
 
+            // Apple Intelligence: register the sidecar polisher on
+            // macOS 26+ when the bundled binary is present. The sidecar
+            // itself does the final "Foundation Models enabled?" check
+            // when first spawned.
+            if let Some(p) = polish::try_construct_apple_intelligence(&handle) {
+                app_state.polish_ctx.write().set_apple_ai(Some(p));
+                tracing::info!("apple-polish sidecar detected; resolver will route to Apple Intelligence");
+            }
+
             // Always show the main window on launch — easier to find than hunting
             // for the tray icon. Subsequent shows happen via tray clicks.
             if let Some(window) = handle.get_webview_window("main") {

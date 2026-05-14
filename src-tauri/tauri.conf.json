@@ -53,6 +53,9 @@
     "resources": [
       "resources/models/*"
     ],
+    "externalBin": [
+      "binaries/dicto-apple-polish"
+    ],
     "macOS": {
       "frameworks": [],
       "minimumSystemVersion": "13.0",

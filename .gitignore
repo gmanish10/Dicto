@@ -38,6 +38,10 @@ src-tauri/resources/models/*.mlmodelc/
 src-tauri/resources/models/*.mlpackage/
 /models/
 
+# Tauri sidecars — rebuilt per-host via scripts/build-apple-polish.sh.
+# Bundled into the .dmg/.app at release time; not source-controlled.
+src-tauri/binaries/dicto-apple-polish-*
+
 # Env
 .env
 .env.local

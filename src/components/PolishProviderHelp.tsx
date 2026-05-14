@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
   ApiKeyStatus,
+  AppleIntelligenceStatus,
   BundledLlmStatus,
   DownloadProgress,
   PolishProvider,
@@ -25,7 +26,13 @@ interface Props {
 export function PolishProviderHelp({ provider, keys }: Props) {
   const meta = POLISH_META[provider];
   const bundled = useBundledLlmStatus();
-  const status = computeStatus(provider, keys, bundled.status, bundled.startDownload);
+  const status = computeStatus(
+    provider,
+    keys,
+    bundled.status,
+    bundled.appleAi,
+    bundled.startDownload
+  );
 
   return (
     <div className="card mt-2 space-y-3">
@@ -115,6 +122,7 @@ function computeStatus(
   provider: PolishProvider,
   keys: ApiKeyStatus[],
   bundled: BundledLlmStatus | null,
+  appleAi: AppleIntelligenceStatus | null,
   startDownload: () => void
 ): ComputedStatus {
   const has = (k: "anthropic" | "groq" | "openai") =>
@@ -127,7 +135,12 @@ function computeStatus(
       return { kind: "ready", text: "Ready" };
 
     case "apple_intelligence":
-      return { kind: "unavailable", text: "Coming soon" };
+      if (!appleAi) {
+        return { kind: "unavailable", text: "Checking…" };
+      }
+      return appleAi.available
+        ? { kind: "ready", text: "Ready" }
+        : { kind: "unavailable", text: "Needs macOS 26 + Apple Intelligence" };
 
     case "bundled_llm": {
       if (!bundled) {
@@ -178,17 +191,20 @@ function computeStatus(
 /**
  * Polls polish-availability on mount, listens for download progress
  * events, exposes a `startDownload` action. Self-contained — the help
- * component only needs to read `.status` and call `.startDownload`.
+ * component reads `.status` (bundled-LLM), `.appleAi`, and calls
+ * `.startDownload` as needed.
  */
 function useBundledLlmStatus() {
   const [status, setStatus] = useState<BundledLlmStatus | null>(null);
+  const [appleAi, setAppleAi] = useState<AppleIntelligenceStatus | null>(null);
 
   const refresh = async () => {
     try {
       const a = await api.checkPolishAvailability();
       setStatus(a.bundled_llm);
+      setAppleAi(a.apple_intelligence);
     } catch {
-      // backend error — leave status null so UI shows "Checking…"
+      // backend error — leave both null so UI shows "Checking…"
     }
   };
 
@@ -235,5 +251,5 @@ function useBundledLlmStatus() {
     }
   };
 
-  return { status, startDownload };
+  return { status, appleAi, startDownload };
 }

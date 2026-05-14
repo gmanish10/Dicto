@@ -6,6 +6,14 @@ use tauri::{AppHandle, Emitter, Manager};
 
 /// Install the menubar tray. The tray menu shows: Open Dicto, Pause/Resume,
 /// History, Settings, Check for Updates, About, Quit. Left-click opens main window.
+///
+/// The tray icon is intentionally static. We tried an animated pulse on
+/// Recording / Transcribing earlier in v0.2.0; it didn't read as
+/// animation at menubar size on macOS 26 (the user couldn't reliably
+/// notice it even with sharply-distinct shapes + main-thread dispatch).
+/// State feedback already comes through the tray tooltip and the audio
+/// chimes, so a static icon is the right call until we have a clear UX
+/// win to justify the complexity.
 pub fn install(app: &AppHandle, state: SharedState) -> tauri::Result<()> {
     let menu = build_menu(app, &state)?;
     let icon_bytes = include_bytes!("../icons/tray-idle.png");
