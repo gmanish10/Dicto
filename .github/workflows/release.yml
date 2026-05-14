@@ -22,8 +22,10 @@ jobs:
         include:
           - runner: macos-14
             target: aarch64-apple-darwin
-          - runner: macos-13
-            target: x86_64-apple-darwin
+          # x86_64 / Intel build is omitted while the macos-13 free-tier
+          # runner queue is unreliable. See #2 for the policy decision.
+          # - runner: macos-13
+          #   target: x86_64-apple-darwin
 
     steps:
       - uses: actions/checkout@v4
@@ -63,3 +65,57 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
+
+      # tauri-action uploads the .dmg and the .app.tar.gz but NOT the .sig
+      # file or a latest.json manifest — so the in-app auto-updater can't
+      # find or verify update payloads. This step plugs that gap.
+      - name: Publish updater manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          VERSION_NUM="${VERSION#v}"
+          ARCH="${TARGET%-apple-darwin}"                     # e.g. "aarch64"
+          PLATFORM_KEY="darwin-${ARCH}"                       # e.g. "darwin-aarch64"
+          BUNDLE_DIR="src-tauri/target/${TARGET}/release/bundle/macos"
+          SIG_SRC="${BUNDLE_DIR}/Dicto.app.tar.gz.sig"
+
+          if [[ ! -f "${SIG_SRC}" ]]; then
+            echo "ERROR: signature file missing at ${SIG_SRC}" >&2
+            echo "Is TAURI_SIGNING_PRIVATE_KEY set as a repo secret?" >&2
+            exit 1
+          fi
+
+          # Rename .sig so the URL the updater plugin computes
+          # (.../Dicto_${ARCH}.app.tar.gz.sig) actually resolves on the release.
+          SIG_NAME="Dicto_${ARCH}.app.tar.gz.sig"
+          cp "${SIG_SRC}" "${SIG_NAME}"
+          SIGNATURE="$(cat "${SIG_NAME}")"
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          URL="https://github.com/${{ github.repository }}/releases/download/${VERSION}/Dicto_${ARCH}.app.tar.gz"
+
+          cat > latest.json <<JSON
+          {
+            "version": "${VERSION_NUM}",
+            "notes": "See https://github.com/${{ github.repository }}/releases/tag/${VERSION}",
+            "pub_date": "${PUB_DATE}",
+            "platforms": {
+              "${PLATFORM_KEY}": {
+                "signature": "${SIGNATURE}",
+                "url": "${URL}"
+              }
+            }
+          }
+          JSON
+
+          echo "Generated latest.json:"
+          cat latest.json
+          echo
+
+          gh release upload "${VERSION}" \
+            "${SIG_NAME}" \
+            "latest.json" \
+            --clobber \
+            --repo "${{ github.repository }}"

@@ -85,11 +85,14 @@ impl Transcriber for LocalWhisper {
                     result.push_str(&segment);
                 }
             }
-            Ok(result.trim().to_string())
+            Ok(strip_no_speech_markers(result.trim()))
         })
         .await
         .map_err(|e| TranscribeError::Inference(format!("join: {e}")))??;
 
+        if text.is_empty() {
+            tracing::debug!("no speech detected — dropping transcript");
+        }
         Ok(text)
     }
 
@@ -99,5 +102,107 @@ impl Transcriber for LocalWhisper {
 
     fn requires_network(&self) -> bool {
         false
+    }
+}
+
+/// Whisper.cpp emits special markers like `[BLANK_AUDIO]` (or `[ _BLANK_AUDIO_ ]`
+/// depending on internal state) when it doesn't detect speech. These aren't
+/// special tokens in the usual sense — `set_print_special(false)` doesn't
+/// filter them — so we strip them ourselves.
+///
+/// Returns the input with any known marker tokens removed and whitespace
+/// collapsed. Returns `""` if the entire transcript was a marker.
+pub(crate) fn strip_no_speech_markers(s: &str) -> String {
+    const MARKERS: &[&str] = &[
+        "[BLANK_AUDIO]",
+        "[ BLANK_AUDIO ]",
+        "[_BLANK_AUDIO_]",
+        "[ _BLANK_AUDIO_ ]",
+        "[NO_SPEECH]",
+        "[ NO_SPEECH ]",
+        "(silence)",
+        "[silence]",
+        "[ silence ]",
+        "[Silence]",
+        "[ Silence ]",
+    ];
+
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    // Fast path: if the whole transcript is exactly one marker, return empty.
+    for m in MARKERS {
+        if trimmed.eq_ignore_ascii_case(m) {
+            return String::new();
+        }
+    }
+
+    // Inline removal: replace each marker (case-sensitive — whisper.cpp is
+    // consistent about the casing) wherever it appears, then collapse spaces.
+    let mut cleaned = trimmed.to_string();
+    for m in MARKERS {
+        cleaned = cleaned.replace(m, " ");
+    }
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_no_speech_markers;
+
+    #[test]
+    fn plain_marker_returns_empty() {
+        assert_eq!(strip_no_speech_markers("[BLANK_AUDIO]"), "");
+        assert_eq!(strip_no_speech_markers(" [BLANK_AUDIO] "), "");
+        assert_eq!(strip_no_speech_markers("[ _BLANK_AUDIO_ ]"), "");
+        assert_eq!(strip_no_speech_markers("(silence)"), "");
+    }
+
+    #[test]
+    fn case_insensitive_exact_match() {
+        assert_eq!(strip_no_speech_markers("[blank_audio]"), "");
+        assert_eq!(strip_no_speech_markers("[ Silence ]"), "");
+    }
+
+    #[test]
+    fn inline_marker_removed_preserves_other_text() {
+        // Whisper sometimes pads a real transcript with a marker.
+        assert_eq!(
+            strip_no_speech_markers("Hello [BLANK_AUDIO] world."),
+            "Hello world."
+        );
+        assert_eq!(
+            strip_no_speech_markers("[BLANK_AUDIO] real speech here"),
+            "real speech here"
+        );
+    }
+
+    #[test]
+    fn empty_input_returns_empty() {
+        assert_eq!(strip_no_speech_markers(""), "");
+        assert_eq!(strip_no_speech_markers("   "), "");
+    }
+
+    #[test]
+    fn normal_text_passes_through() {
+        assert_eq!(
+            strip_no_speech_markers("Normal transcribed text."),
+            "Normal transcribed text."
+        );
+        assert_eq!(
+            strip_no_speech_markers("The meeting is at three pm"),
+            "The meeting is at three pm"
+        );
+    }
+
+    #[test]
+    fn whitespace_collapsed_after_removal() {
+        // Multiple markers + multiple spaces should not produce double-spaces.
+        assert_eq!(
+            strip_no_speech_markers("[BLANK_AUDIO]   word   [BLANK_AUDIO]"),
+            "word"
+        );
     }
 }

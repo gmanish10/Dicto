@@ -6,7 +6,7 @@ Dicto is an open-source alternative to apps like Wispr Flow. It runs entirely on
 
 - 🎙 **Push-to-talk hotkey** — hold any key chord (including modifier-only chords like Right Option or Fn) to record. Release to transcribe and inject.
 - 🧠 **Local Whisper by default** — your audio never leaves your Mac. Optionally BYOK Groq / OpenAI / Anthropic for better accents, faster long-utterance polish, or LLM cleanup.
-- ✍️ **Disfluency cleanup** — "um, like, the the thing is, uh" becomes "We should ship it tomorrow." Built-in local stripper is free; Claude / Groq LLM polish is BYOK.
+- ✍️ **Smart cleanup** — Dicto strips "um", "uh", false starts, fixes capitalization, and adds punctuation. **"Best available"** mode picks the right cleanup engine for your Mac automatically; smarter cloud cleanup is available if you bring an Anthropic or Groq API key.
 - 📖 **Custom vocabulary** — bias Whisper toward your jargon, product names, names of teammates.
 - 🔁 **Replacements** — say "newline" → `\n`, "k8s" → "Kubernetes", whatever you want.
 - 📜 **History** — last 20 transcripts, click to copy or re-paste, edit to teach Dicto your style.
@@ -56,7 +56,7 @@ Hotkey up    →  resample to 16k mono  →  Whisper (local or BYOK)
                               save to ~/Library/Application Support/Dicto/dicto.db
 ```
 
-Tech stack: **Tauri v2** (Rust backend, React+TS frontend), **whisper.cpp** via `whisper-rs` with CoreML feature on Apple Silicon, **cpal** for audio, a custom **CGEventTap** for global hotkey hold-detection (replaces `rdev`, which panic-aborts in its extern-C callback on macOS 26 keycodes), **arboard** + raw **CGEvent** for clipboard-paste injection (replaces `enigo`, which calls thread-affined TSM APIs from worker threads).
+Tech stack: **Tauri v2** (Rust backend, React + TypeScript frontend), **whisper.cpp** via `whisper-rs` with CoreML acceleration on Apple Silicon, **cpal** for audio capture, a custom **CGEventTap** for global hold-to-talk hotkeys, and raw **CGEvent** + **NSPasteboard** for text injection.
 
 ---
 
@@ -66,20 +66,21 @@ Requirements:
 - macOS 13 Ventura or newer
 - Xcode Command Line Tools (`xcode-select --install`)
 - [Rust](https://rustup.rs) (stable)
-- [Node.js 20](https://nodejs.org) + [pnpm 9](https://pnpm.io)
+- [Node.js 20](https://nodejs.org) and npm (ships with Node)
+- `cmake` (for building whisper.cpp). On Homebrew: `brew install cmake`.
 
 ```bash
 git clone https://github.com/gmanish10/Dicto
 cd Dicto
-pnpm install
+npm install
 ./scripts/fetch-model.sh ggml-small.en   # ~250 MB, one-time
-pnpm tauri dev
+npx tauri dev
 ```
 
 For a release `.dmg`:
 
 ```bash
-pnpm tauri build
+npx tauri build
 # .dmg lands in src-tauri/target/release/bundle/dmg/
 ```
 
@@ -111,12 +112,22 @@ Keys are stored in the **macOS Keychain**. Dicto never reads them in plaintext l
 
 ## Roadmap
 
-v1 ships English only. Planned:
-- Multi-language support (swap in non-`.en` Whisper models)
-- Voice Activity Detection (silero-vad) for better silence handling on long utterances
-- Code signing + notarization (no more `xattr` workaround)
-- Streaming partial transcripts
-- Custom polish prompts per app (e.g., terse in Slack, formal in email)
+**v0.1.1 (next patch):**
+- Auto-updater works end-to-end ([#1](https://github.com/gmanish10/Dicto/issues/1))
+- Stop typing `[BLANK_AUDIO]` when no speech is detected ([#10](https://github.com/gmanish10/Dicto/issues/10))
+
+**v0.2.0 (polish-quality push):**
+- Free on-device LLM cleanup using Apple Intelligence on macOS 26 ([#5](https://github.com/gmanish10/Dicto/issues/5))
+- Free on-device LLM cleanup on older macOS via a small bundled model ([#4](https://github.com/gmanish10/Dicto/issues/4))
+- Guided onboarding with mic test + hotkey test ([#6](https://github.com/gmanish10/Dicto/issues/6))
+- Animated tray icon during recording / transcribing ([#7](https://github.com/gmanish10/Dicto/issues/7))
+- macOS system notifications when the window is hidden ([#8](https://github.com/gmanish10/Dicto/issues/8))
+
+**Later:**
+- Apple Developer signing + notarization (removes the `xattr` step)
+- Intel Mac builds ([#2](https://github.com/gmanish10/Dicto/issues/2))
+- Multi-language support
+- Per-app polish styles ("terse in Slack, formal in email")
 
 ---
 
