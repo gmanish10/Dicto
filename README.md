@@ -43,17 +43,17 @@ Dicto is an open-source alternative to apps like Wispr Flow. It runs entirely on
 
 ```
 Hotkey down  →  cpal captures mic  →  ring buffer
-Hotkey up    →  resample to 16k mono  →  Whisper (local or BYOK)
+Hotkey up    →  resample to 16k mono  →  Whisper (local, or Groq/OpenAI with your key)
                                         ↓
                               raw transcript ("um, the, the thing is…")
                                         ↓
-                              Polisher (local-lite, or Claude/Groq BYOK)
+                              Cleanup (best available — local heuristics, or Claude/Groq with your key)
                                         ↓
                               user replacements ("newline" → \n)
                                         ↓
-                              NSPasteboard + simulated Cmd-V into focused app
+                              NSPasteboard + simulated Cmd-V into the focused app
                                         ↓
-                              save to ~/Library/Application Support/Dicto/dicto.db
+                              save to ~/Library/Application Support/com.dicto.app/dicto.db
 ```
 
 Tech stack: **Tauri v2** (Rust backend, React + TypeScript frontend), **whisper.cpp** via `whisper-rs` with CoreML acceleration on Apple Silicon, **cpal** for audio capture, a custom **CGEventTap** for global hold-to-talk hotkeys, and raw **CGEvent** + **NSPasteboard** for text injection.
@@ -105,29 +105,16 @@ Keys are stored in the **macOS Keychain**. Dicto never reads them in plaintext l
 
 - Local Whisper mode: audio **never** leaves your Mac.
 - BYOK cloud modes: audio is sent **only** to the provider you explicitly configured.
-- Transcript history is a local SQLite file in `~/Library/Application Support/Dicto/dicto.db`. Clear it from the History tab.
+- Transcript history is a local SQLite file in `~/Library/Application Support/com.dicto.app/dicto.db`. Clear it from the History tab.
 - No telemetry, no analytics, no cloud accounts.
 
 ---
 
-## Roadmap
+## Contributing & roadmap
 
-**v0.1.1 (next patch):**
-- Auto-updater works end-to-end ([#1](https://github.com/gmanish10/Dicto/issues/1))
-- Stop typing `[BLANK_AUDIO]` when no speech is detected ([#10](https://github.com/gmanish10/Dicto/issues/10))
+Planned work, open bugs, and feature ideas all live in [GitHub Issues](https://github.com/gmanish10/Dicto/issues), grouped by [milestone](https://github.com/gmanish10/Dicto/milestones). Past releases and their changelogs are at [Releases](https://github.com/gmanish10/Dicto/releases) — see also [CHANGELOG.md](CHANGELOG.md).
 
-**v0.2.0 (polish-quality push):**
-- Free on-device LLM cleanup using Apple Intelligence on macOS 26 ([#5](https://github.com/gmanish10/Dicto/issues/5))
-- Free on-device LLM cleanup on older macOS via a small bundled model ([#4](https://github.com/gmanish10/Dicto/issues/4))
-- Guided onboarding with mic test + hotkey test ([#6](https://github.com/gmanish10/Dicto/issues/6))
-- Animated tray icon during recording / transcribing ([#7](https://github.com/gmanish10/Dicto/issues/7))
-- macOS system notifications when the window is hidden ([#8](https://github.com/gmanish10/Dicto/issues/8))
-
-**Later:**
-- Apple Developer signing + notarization (removes the `xattr` step)
-- Intel Mac builds ([#2](https://github.com/gmanish10/Dicto/issues/2))
-- Multi-language support
-- Per-app polish styles ("terse in Slack, formal in email")
+Bugs and ideas welcome; open an issue.
 
 ---
 
