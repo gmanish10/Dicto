@@ -124,6 +124,26 @@ export default function Settings() {
                 </span>
               </label>
             </div>
+
+            <div className="card flex items-center justify-between">
+              <div>
+                <h3 className="font-medium">Run onboarding again</h3>
+                <p className="mt-1 text-xs text-ink-400">
+                  Re-walk the Welcome → Permissions → Setup → Try-it flow. Useful after a major
+                  release, or when setting Dicto up on a new Mac with the same `~/Library` config.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                onClick={async () => {
+                  await update({ onboarding_completed: false });
+                  window.location.hash = "#/onboarding";
+                }}
+              >
+                Restart onboarding
+              </button>
+            </div>
           </div>
         </section>
 

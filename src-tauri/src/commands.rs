@@ -241,10 +241,31 @@ pub fn open_main_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Start the dictation runtime — recorder service + global hotkey tap.
+///
+/// At app launch we defer this until the user finishes onboarding (see
+/// the gate in `lib.rs`'s setup block), because creating the
+/// `CGEventTap` triggers macOS's Input Monitoring permission prompt.
+/// The redesigned onboarding flow calls this command from the final
+/// step so the prompt only fires *after* the user has been told why.
+///
+/// `spawn_coordinator` itself is idempotent via an `AtomicBool` flag,
+/// so this command is safe to call multiple times — duplicate IPC
+/// (e.g. a React remount mid-onboarding) won't spawn a second tap.
 #[tauri::command]
-pub fn finish_onboarding(state: State<'_, SharedState>) -> Result<(), String> {
+pub fn start_runtime(app: AppHandle, state: State<'_, SharedState>) {
+    crate::pipeline::spawn_coordinator(app, state.inner().clone());
+}
+
+#[tauri::command]
+pub fn finish_onboarding(app: AppHandle, state: State<'_, SharedState>) -> Result<(), String> {
     state.config.write().onboarding_completed = true;
-    state.save_settings().map_err(|e| e.to_string())
+    state.save_settings().map_err(|e| e.to_string())?;
+    // Chain the runtime spawn so the React side only has to round-trip
+    // once: marking onboarding done implies "I've granted everything,
+    // please start the dictation pipeline now."
+    crate::pipeline::spawn_coordinator(app, state.inner().clone());
+    Ok(())
 }
 
 // -- Bundled LLM model availability + download ----------------------------

@@ -90,7 +90,29 @@ fn spawn_recorder_service() -> Sender<RecCommand> {
 /// Spawn the long-lived coordinator task. Listens to the hotkey channel,
 /// delegates audio capture to the recorder service, and dispatches per-utterance
 /// transcription/polish/inject tasks.
+///
+/// **Idempotent**: a `compare_exchange` on `state.runtime_started` ensures
+/// the recorder thread, the CGEventTap, and the coordinator loop only
+/// start once per process. Subsequent calls (from `start_runtime` IPC,
+/// or a re-entrant code path during dev reload) are no-ops. This matters
+/// because the redesigned onboarding flow defers the first spawn until
+/// the user has granted permissions inside step 2 — and the IPC fires
+/// from React, which can re-mount and retry.
 pub fn spawn_coordinator(app: AppHandle, state: SharedState) {
+    use std::sync::atomic::Ordering;
+    if state
+        .runtime_started
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        tracing::debug!("spawn_coordinator: already started, skipping");
+        return;
+    }
+    tracing::info!("spawn_coordinator: starting runtime threads");
+    spawn_coordinator_inner(app, state);
+}
+
+fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
     // Shared hotkey config that the rdev listener reads; updated when settings change.
     let hotkey_config: Arc<RwLock<Option<hotkey::ParsedHotkey>>> = Arc::new(RwLock::new(
         hotkey::listener::parse(&state.config.read().hotkey.chord),
@@ -434,16 +456,24 @@ async fn run_utterance(
         }
     }
 
-    // Inject into the focused app.
-    let injector = ClipboardPasteInjector;
-    match injector.inject(&injectable) {
-        Ok(()) => {}
-        Err(crate::inject::InjectError::SecureInputActive) => {
-            let msg = "Secure input detected — text copied to clipboard.";
-            let _ = app.emit("pipeline:toast", msg);
-            crate::notify::notify_if_hidden(&app, "Dicto — paste blocked", msg);
+    // Inject into the focused app — unless onboarding is still in
+    // progress, in which case the Try-it step is showing the result
+    // inside Dicto's own window and we deliberately don't want to
+    // paste into whatever happens to be frontmost (typically a
+    // browser the user has open from reading the docs).
+    if state.config.read().onboarding_completed {
+        let injector = ClipboardPasteInjector;
+        match injector.inject(&injectable) {
+            Ok(()) => {}
+            Err(crate::inject::InjectError::SecureInputActive) => {
+                let msg = "Secure input detected — text copied to clipboard.";
+                let _ = app.emit("pipeline:toast", msg);
+                crate::notify::notify_if_hidden(&app, "Dicto — paste blocked", msg);
+            }
+            Err(e) => return Err(e.into()),
         }
-        Err(e) => return Err(e.into()),
+    } else {
+        tracing::debug!("onboarding active — skipping paste, Try-it panel will show result");
     }
 
     let polish_name = polisher.name();

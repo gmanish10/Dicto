@@ -2,6 +2,7 @@ use crate::{config::Settings, history::HistoryStore, hotkey::HotkeyEvent, polish
 use crossbeam_channel::{Receiver, Sender};
 use parking_lot::RwLock;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -30,6 +31,11 @@ pub struct AppState {
     /// rdev producer side (set by hotkey::listener when it starts).
     pub hotkey_tx: Sender<HotkeyEvent>,
     pub hotkey_rx: Receiver<HotkeyEvent>,
+    /// True once the pipeline coordinator + hotkey tap have been spawned.
+    /// Lets `start_runtime` be idempotent: onboarding finish triggers a
+    /// spawn, but subsequent calls (e.g. duplicate IPC, dev reload) are
+    /// no-ops. Set with `compare_exchange` from the spawn helper.
+    pub runtime_started: AtomicBool,
 }
 
 impl AppState {
@@ -53,6 +59,7 @@ impl AppState {
             polish_model_download: RwLock::new(None),
             hotkey_tx: tx,
             hotkey_rx: rx,
+            runtime_started: AtomicBool::new(false),
         })
     }
 

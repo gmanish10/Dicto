@@ -54,3 +54,14 @@ src-tauri/resources/models/*.mlpackage/
 *.sqlite-journal
 *.db
 *.db-journal
+
+# Icon outputs from `scripts/regen-icons.sh` that we don't bundle.
+# tauri.conf.json's `bundle.icon` only lists 32x32 / 128x128 /
+# 128x128@2x — ignore the rest so a re-run doesn't clutter git status.
+/src-tauri/icons/android/
+/src-tauri/icons/ios/
+/src-tauri/icons/Square*Logo.png
+/src-tauri/icons/StoreLogo.png
+/src-tauri/icons/64x64.png
+/src-tauri/icons/icon.icns
+/src-tauri/icons/icon.ico

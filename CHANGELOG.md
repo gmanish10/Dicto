@@ -6,6 +6,52 @@ All notable changes to Dicto are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-14
+
+Onboarding redesign + pastel visual refresh.
+
+### Install
+
+**👉 [Download Dicto_0.3.0_aarch64.dmg](https://github.com/gmanish10/Dicto/releases/download/v0.3.0/Dicto_0.3.0_aarch64.dmg)**
+
+Apple Silicon (M-series) only. Existing v0.1.2+ users get this via the built-in
+updater (About → Install and restart). First-time install: drag to `/Applications`,
+then `xattr -d com.apple.quarantine /Applications/Dicto.app` once.
+
+### Added
+- **Six-step onboarding.** Welcome → Permissions → Setup → Try it → Discover →
+  Done. Each macOS permission is granted on user-initiated click — no more cold
+  TCC prompts before the welcome screen renders. The Setup step picks hotkey,
+  microphone, speech-to-text provider, and cleanup provider in one place, with
+  inline API-key entry only when you select a BYOK option.
+- **Try-it sandbox.** Sample prompts to read aloud; raw + cleaned-up output
+  appears in the onboarding window. Auto-paste is suppressed while onboarding
+  is in progress so the demo doesn't dump text into whatever app you happen to
+  have open.
+- **"Restart onboarding" button** in Settings → General. Useful after a major
+  release or when re-onboarding on a new Mac with the same `~/Library` config.
+- **Pastel palette.** New primary lavender accent (`#B5ACE5`) and a soft
+  pastel gradient (`sky → lavender → blush`) on hero surfaces — step titles,
+  the progress bar, the welcome logo halo. Status pills use pastel mint /
+  rose / amber instead of the punchier traffic-light hues. Easier on
+  long-session eyes for an app you keep open all day.
+- **Auto-pre-select Apple Intelligence** as cleanup provider on macOS 26+
+  during onboarding. One fewer decision for non-expert users.
+
+### Fixed
+- **Cold permission popups.** v0.2.x launched `CGEventTap` and `cpal`
+  enumeration before any UI rendered, which fired Input Monitoring and
+  Microphone TCC prompts cold. The runtime spawn is now gated on
+  `onboarding_completed` and started via the new `start_runtime` IPC at the
+  end of the Permissions step.
+
+### Internal
+- `spawn_coordinator` is now idempotent via an `AtomicBool` flag on
+  `AppState` — duplicate IPC during onboarding can't spawn a second hotkey
+  tap.
+- New `scripts/regen-icons.sh` reproduces the bundled `.icns` + PNG icon set
+  from the inline brand SVG using `@resvg/resvg-js` + `tauri icon`.
+
 ## [0.2.1] - 2026-05-14
 
 Bug-fix release for four regressions reported on v0.2.0.

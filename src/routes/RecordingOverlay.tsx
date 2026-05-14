@@ -60,10 +60,13 @@ export default function RecordingOverlay() {
 }
 
 function RecordingDot() {
+  // Recolored to pastel blush in v0.3.0 to match the rest of the
+  // palette. The dot still reads as obviously "recording" against the
+  // dark overlay pill because blush is high-contrast on near-black.
   return (
     <span className="relative flex h-2.5 w-2.5">
-      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-blush opacity-75" />
+      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand-blush" />
     </span>
   );
 }

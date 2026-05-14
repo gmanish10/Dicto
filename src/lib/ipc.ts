@@ -129,4 +129,5 @@ export const api = {
     invoke<void>("record_correction", { raw, finalText }),
   openMainWindow: () => invoke<void>("open_main_window"),
   finishOnboarding: () => invoke<void>("finish_onboarding"),
+  startRuntime: () => invoke<void>("start_runtime"),
 };

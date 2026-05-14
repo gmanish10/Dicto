@@ -17,9 +17,24 @@ export default {
           800: "#1a1a1f",
           900: "#0e0e12",
         },
+        // Pastel palette introduced in v0.3.0. The old `accent` was a
+        // single dusty blue; the logo already carried a richer
+        // gradient that nothing else used. v0.3.0 promotes a soft
+        // pastel lavender as primary accent and adds the gradient
+        // stops + pastel status hues as `brand.*` tokens. White text
+        // reads poorly on these lightnesses, so primary buttons use
+        // dark ink text (see `.btn-primary` in index.css).
         accent: {
-          DEFAULT: "#5b8def",
-          hover: "#4a7be0",
+          DEFAULT: "#B5ACE5", // pastel lavender
+          hover: "#9F94D6", // deeper lavender for hover
+        },
+        brand: {
+          sky: "#A7C7E7", // pastel sky blue
+          lavender: "#B5ACE5",
+          blush: "#F2C6D1", // pastel blush — recording dot
+          mint: "#A8D5BA", // pastel sage — granted/success
+          amber: "#E8C97C", // pastel honey — not_determined
+          rose: "#E08E96", // muted rose — denied
         },
       },
       fontFamily: {

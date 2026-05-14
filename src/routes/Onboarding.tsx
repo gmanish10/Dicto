@@ -1,28 +1,56 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
-import { api, PermissionsSnapshot, Settings } from "../lib/ipc";
+import { emit } from "@tauri-apps/api/event";
+import {
+  ApiKey,
+  ApiKeyStatus,
+  MicrophoneInfo,
+  PermissionsSnapshot,
+  PolishProvider,
+  Settings,
+  SttProvider,
+  api,
+} from "../lib/ipc";
 import { PermissionRow } from "../components/PermissionRow";
+import { ApiKeyInput } from "../components/ApiKeyInput";
+import { HotkeyBinder } from "../components/HotkeyBinder";
 import { Logo } from "../components/Logo";
+import { POLISH_META, VISIBLE_PROVIDERS } from "../lib/polishLabels";
 
 /**
- * Multi-step onboarding: Welcome → Permissions → Try It Out → Done.
+ * v0.3.0 onboarding. Six steps, in order:
  *
- * The "Try It Out" step doubles as a mic-and-hotkey check: when the
- * user holds their hotkey, we see the pipeline transition to Recording
- * (mic captured audio → hotkey wired correctly), then Transcribing
- * (audio reached whisper), then back to Idle. Catching both transitions
- * proves the end-to-end stack works on this machine before they ever
- * leave onboarding — much cheaper than failing silently in real usage.
+ *   1. Welcome — pitch + privacy callout
+ *   2. Permissions — three TCC grants, user-initiated
+ *   3. Models — hotkey + mic + STT + cleanup provider, with inline BYOK
+ *      key entry only when the user picks a key-requiring provider
+ *   4. Try it — sample prompts + a result panel that shows the
+ *      transcribed + cleaned output. Auto-paste is suppressed
+ *      server-side while `onboarding_completed` is false
+ *      (see pipeline.rs:432).
+ *   5. Discover — Dictionary + History education
+ *   6. Done — recap + "Open Dicto" CTA, which calls `finishOnboarding`
+ *      (which also spawns the dictation runtime if it hadn't been
+ *      spawned earlier).
+ *
+ * The runtime (hotkey tap + recorder) is **not** started at app
+ * launch when onboarding is incomplete — that's gated in
+ * `src-tauri/src/lib.rs`. We call `api.startRuntime()` ourselves
+ * when transitioning out of the Permissions step so the hotkey is
+ * live for Try-it. `spawn_coordinator` is idempotent so subsequent
+ * calls are harmless.
  */
-type StepId = "welcome" | "permissions" | "try-it" | "done";
 
-const STEPS: { id: StepId; label: string }[] = [
+const STEPS = [
   { id: "welcome", label: "Welcome" },
   { id: "permissions", label: "Permissions" },
+  { id: "models", label: "Setup" },
   { id: "try-it", label: "Try it" },
+  { id: "discover", label: "Discover" },
   { id: "done", label: "Done" },
-];
+] as const;
+type StepId = (typeof STEPS)[number]["id"];
 
 const initialPerms: PermissionsSnapshot = {
   microphone: "not_determined",
@@ -30,35 +58,55 @@ const initialPerms: PermissionsSnapshot = {
   input_monitoring: "not_determined",
 };
 
+interface DemoResult {
+  raw: string;
+  polished: string;
+  polishProvider: string | null;
+}
+
 export default function Onboarding() {
   const navigate = useNavigate();
   const [stepId, setStepId] = useState<StepId>("welcome");
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [perms, setPerms] = useState<PermissionsSnapshot>(initialPerms);
-  const [hotkeyChord, setHotkeyChord] = useState<string>("");
-  const [sawRecording, setSawRecording] = useState(false);
-  const [sawTranscribing, setSawTranscribing] = useState(false);
+  const [keys, setKeys] = useState<ApiKeyStatus[]>([]);
+  const [mics, setMics] = useState<MicrophoneInfo[]>([]);
+  const [demo, setDemo] = useState<DemoResult | null>(null);
+  const [tryItState, setTryItState] = useState<"idle" | "recording" | "transcribing">("idle");
+  const [sawDemo, setSawDemo] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
 
-  // Show the user the chord they're supposed to press in step 3.
+  // Initial settings + key status load.
   useEffect(() => {
-    api.getSettings().then((s: Settings) => setHotkeyChord(s.hotkey.chord)).catch(() => {});
+    void api.getSettings().then(setSettings);
+    void api.getApiKeyStatus().then(setKeys);
+    void api.checkPolishAvailability().then((a) => setAppleAvailable(a.apple_intelligence.available));
   }, []);
+
+  // Auto-pre-select Apple Intelligence cleanup on macOS 26+ if the user
+  // is still on the default `auto`. Picks the best free option without
+  // forcing the user to dig through the dropdown.
+  useEffect(() => {
+    if (!settings || !appleAvailable) return;
+    if (settings.polish_provider === "auto") {
+      void writeSettings({ polish_provider: "apple_intelligence" });
+    }
+    // intentionally only runs once — guard via the early-out above
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appleAvailable, settings?.polish_provider]);
 
   const refreshPerms = useCallback(async () => {
     setPerms(await api.checkPermissions());
   }, []);
 
-  // Poll permissions only while the permissions step is open. We also
-  // re-check on window focus so granting in System Settings and
-  // Cmd-Tabbing back picks up the change immediately, not on the next
-  // 1.5 s tick — macOS sometimes takes a beat to propagate TCC
-  // updates and the polled interval can feel laggy in the meantime.
+  // Poll while on the Permissions step. Also re-check on window focus
+  // so granting in System Settings and Cmd-Tabbing back picks up the
+  // change instantly rather than on the next 1.5 s tick.
   useEffect(() => {
     if (stepId !== "permissions") return;
     void refreshPerms();
     const id = setInterval(refreshPerms, 1500);
-    const onFocus = () => {
-      void refreshPerms();
-    };
+    const onFocus = () => void refreshPerms();
     window.addEventListener("focus", onFocus);
     return () => {
       clearInterval(id);
@@ -66,40 +114,92 @@ export default function Onboarding() {
     };
   }, [stepId, refreshPerms]);
 
-  // While in try-it: subscribe to pipeline:state events and mark the
-  // matching observations so the Continue button enables.
+  // Try-it step: subscribe to pipeline state + transcript:new events.
   useEffect(() => {
     if (stepId !== "try-it") return;
-    const unlisten = listen<number>("pipeline:state", (e) => {
-      // 0=Idle, 1=Recording, 2=Transcribing, 3=UpdateAvailable
-      if (e.payload === 1) setSawRecording(true);
-      if (e.payload === 2) setSawTranscribing(true);
-    });
+    const unsubs: Array<Promise<() => void>> = [];
+    unsubs.push(
+      listen<number>("pipeline:state", (e) => {
+        if (e.payload === 1) setTryItState("recording");
+        else if (e.payload === 2) setTryItState("transcribing");
+        else setTryItState("idle");
+      })
+    );
+    unsubs.push(
+      listen<{
+        raw: string;
+        polished: string;
+        polish_provider: string | null;
+      }>("transcript:new", (e) => {
+        setDemo({
+          raw: e.payload.raw,
+          polished: e.payload.polished,
+          polishProvider: e.payload.polish_provider,
+        });
+        setSawDemo(true);
+        setTryItState("idle");
+      })
+    );
     return () => {
-      void unlisten.then((fn) => fn());
+      unsubs.forEach((p) => void p.then((fn) => fn()));
     };
   }, [stepId]);
+
+  // Load mics lazily once we reach the Models step. Triggers
+  // microphone-related device enumeration, but only after the user has
+  // already granted Microphone TCC in step 2.
+  useEffect(() => {
+    if (stepId !== "models" || mics.length > 0) return;
+    void api.listMicrophones().then(setMics).catch(() => undefined);
+  }, [stepId, mics.length]);
 
   const allPermsGranted =
     perms.microphone === "granted" &&
     perms.accessibility === "granted" &&
     perms.input_monitoring === "granted";
 
-  const tryItComplete = sawRecording && sawTranscribing;
+  const writeSettings = useCallback(async (patch: Partial<Settings>) => {
+    setSettings((cur) => (cur ? { ...cur, ...patch } : cur));
+    const cur = await api.getSettings();
+    await api.setSettings({ ...cur, ...patch });
+    await emit("settings:updated");
+  }, []);
 
-  const currentStepIndex = useMemo(() => STEPS.findIndex((s) => s.id === stepId), [stepId]);
+  // Move runtime startup to the moment the user clears Permissions. The
+  // hotkey tap + recorder need to be alive for Try-it but spawning at
+  // app launch is what caused the cold TCC prompts in v0.2.0.
+  // `spawn_coordinator` is idempotent so a duplicate call from React
+  // re-mount is harmless.
+  const onPermissionsContinue = useCallback(async () => {
+    await api.startRuntime();
+    setStepId("models");
+  }, []);
 
   async function finish() {
     await api.finishOnboarding();
     navigate("/settings", { replace: true });
   }
 
+  if (!settings) {
+    return <div className="p-8 text-ink-400">Loading…</div>;
+  }
+
+  const currentStepIndex = STEPS.findIndex((s) => s.id === stepId);
+
   return (
-    <div className="mx-auto max-w-2xl p-8">
+    <div className="mx-auto max-w-3xl p-8">
       <div className="mb-6 flex items-center gap-4">
-        <Logo size={56} idSuffix="onboarding" />
+        <div className="relative">
+          {stepId === "welcome" && (
+            <div
+              aria-hidden
+              className="absolute inset-0 -m-4 rounded-full bg-gradient-brand opacity-25 blur-xl"
+            />
+          )}
+          <Logo size={56} idSuffix="onboarding" className="relative" />
+        </div>
         <div>
-          <h1 className="text-2xl font-semibold">Welcome to Dicto</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Welcome to Dicto</h1>
           <p className="text-sm text-ink-400">Hold-to-talk dictation, on your Mac.</p>
         </div>
       </div>
@@ -107,9 +207,7 @@ export default function Onboarding() {
       <Stepper currentIndex={currentStepIndex} />
 
       <div className="mt-6">
-        {stepId === "welcome" && (
-          <WelcomeStep onNext={() => setStepId("permissions")} />
-        )}
+        {stepId === "welcome" && <WelcomeStep onNext={() => setStepId("permissions")} />}
         {stepId === "permissions" && (
           <PermissionsStep
             perms={perms}
@@ -119,66 +217,111 @@ export default function Onboarding() {
               await refreshPerms();
             }}
             onBack={() => setStepId("welcome")}
+            onNext={onPermissionsContinue}
+          />
+        )}
+        {stepId === "models" && (
+          <ModelsStep
+            settings={settings}
+            mics={mics}
+            keys={keys}
+            appleAvailable={appleAvailable}
+            onChange={writeSettings}
+            onKeysChanged={async () => setKeys(await api.getApiKeyStatus())}
+            onBack={() => setStepId("permissions")}
             onNext={() => setStepId("try-it")}
           />
         )}
         {stepId === "try-it" && (
           <TryItStep
-            hotkeyChord={hotkeyChord}
-            sawRecording={sawRecording}
-            sawTranscribing={sawTranscribing}
-            complete={tryItComplete}
-            onBack={() => setStepId("permissions")}
-            onNext={() => setStepId("done")}
+            hotkey={settings.hotkey.chord}
+            state={tryItState}
+            demo={demo}
+            sawDemo={sawDemo}
+            onRetry={() => setDemo(null)}
+            onBack={() => setStepId("models")}
+            onNext={() => setStepId("discover")}
           />
         )}
-        {stepId === "done" && <DoneStep onFinish={finish} />}
+        {stepId === "discover" && (
+          <DiscoverStep onBack={() => setStepId("try-it")} onNext={() => setStepId("done")} />
+        )}
+        {stepId === "done" && (
+          <DoneStep
+            settings={settings}
+            mics={mics}
+            onFinish={finish}
+            onBack={() => setStepId("discover")}
+          />
+        )}
       </div>
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Stepper
+
 function Stepper({ currentIndex }: { currentIndex: number }) {
   return (
-    <ol className="flex items-center gap-2 text-xs">
-      {STEPS.map((s, i) => {
-        const state =
-          i < currentIndex ? "done" : i === currentIndex ? "active" : "pending";
-        const pillClass =
-          state === "done"
-            ? "bg-accent text-white"
-            : state === "active"
-            ? "border border-accent text-accent"
-            : "border border-ink-200 text-ink-400 dark:border-ink-700";
-        return (
-          <li key={s.id} className="flex items-center gap-2">
-            <span
-              className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] ${pillClass}`}
-            >
-              {i + 1}
-            </span>
-            <span
-              className={state === "active" ? "font-medium" : "text-ink-400"}
-            >
-              {s.label}
-            </span>
-            {i < STEPS.length - 1 && <span className="text-ink-300">→</span>}
-          </li>
-        );
-      })}
-    </ol>
+    <div>
+      <ol className="flex items-center gap-2 text-xs">
+        {STEPS.map((s, i) => {
+          const state = i < currentIndex ? "done" : i === currentIndex ? "active" : "pending";
+          const pillClass =
+            state === "done"
+              ? "bg-accent text-ink-900"
+              : state === "active"
+              ? "border border-accent text-ink-900 dark:text-ink-100"
+              : "border border-ink-200 text-ink-400 dark:border-ink-700";
+          return (
+            <li key={s.id} className="flex items-center gap-2">
+              <span
+                className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] ${pillClass}`}
+              >
+                {i + 1}
+              </span>
+              <span
+                className={
+                  state === "active" ? "font-medium text-ink-900 dark:text-ink-100" : "text-ink-400"
+                }
+              >
+                {s.label}
+              </span>
+              {i < STEPS.length - 1 && <span className="text-ink-300">→</span>}
+            </li>
+          );
+        })}
+      </ol>
+      {/* Pastel progress bar — fills as the user advances. */}
+      <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-ink-100 dark:bg-ink-700">
+        <div
+          className="h-full bg-gradient-brand transition-[width] duration-300"
+          style={{ width: `${((currentIndex + 1) / STEPS.length) * 100}%` }}
+        />
+      </div>
+    </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Step 1: Welcome
 
 function WelcomeStep({ onNext }: { onNext: () => void }) {
   return (
     <div className="card space-y-4">
-      <h2 className="text-lg font-semibold">How Dicto works</h2>
-      <ul className="ml-4 list-disc space-y-1 text-sm text-ink-600 dark:text-ink-300">
+      <h2 className="text-xl font-semibold text-gradient-brand">How Dicto works</h2>
+      <ul className="ml-4 list-disc space-y-1.5 text-sm text-ink-600 dark:text-ink-300">
         <li>Hold your hotkey. Speak. Release.</li>
         <li>Dicto types the cleaned-up text into whatever app you're using.</li>
-        <li>The default hotkey is <kbd className="kbd">⌃ Space</kbd> — you can change it in Settings.</li>
-        <li>Everything stays on your Mac unless you opt into a cloud cleanup provider.</li>
+        <li>
+          The default hotkey is <kbd className="kbd">⌃ Space</kbd>. You can change it in the next
+          step.
+        </li>
+        <li>
+          <strong>Everything stays on your Mac</strong> unless you opt into a cloud cleanup
+          provider with your own API key.
+        </li>
       </ul>
       <div className="flex justify-end pt-2">
         <button type="button" className="btn-primary" onClick={onNext}>
@@ -188,6 +331,9 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Step 2: Permissions
 
 function PermissionsStep({
   perms,
@@ -200,14 +346,14 @@ function PermissionsStep({
   allGranted: boolean;
   onRequestMic: () => Promise<void>;
   onBack: () => void;
-  onNext: () => void;
+  onNext: () => void | Promise<void>;
 }) {
   return (
     <div className="card space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Grant three macOS permissions</h2>
+        <h2 className="text-xl font-semibold text-gradient-brand">Grant three macOS permissions</h2>
         <p className="mt-1 text-sm text-ink-500 dark:text-ink-300">
-          Status pills update automatically as you grant each in System Settings.
+          Status pills update automatically as you grant each one — you don't need to come back here.
         </p>
       </div>
       <div className="space-y-3">
@@ -220,7 +366,7 @@ function PermissionsStep({
         />
         <PermissionRow
           label="Input Monitoring"
-          description="So the global shortcut works while another app is focused. macOS will prompt the first time you trigger the hotkey."
+          description="So the global shortcut works while another app is focused. Click Open System Settings, enable Dicto, then come back here."
           status={perms.input_monitoring}
           pane="input_monitoring"
         />
@@ -235,7 +381,12 @@ function PermissionsStep({
         <button type="button" className="btn-secondary" onClick={onBack}>
           Back
         </button>
-        <button type="button" className="btn-primary" disabled={!allGranted} onClick={onNext}>
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={!allGranted}
+          onClick={() => onNext()}
+        >
           {allGranted ? "Continue" : "Grant all three to continue"}
         </button>
       </div>
@@ -243,92 +394,396 @@ function PermissionsStep({
   );
 }
 
-function TryItStep({
-  hotkeyChord,
-  sawRecording,
-  sawTranscribing,
-  complete,
+// ---------------------------------------------------------------------------
+// Step 3: Hotkey + models
+
+function ModelsStep({
+  settings,
+  mics,
+  keys,
+  appleAvailable,
+  onChange,
+  onKeysChanged,
   onBack,
   onNext,
 }: {
-  hotkeyChord: string;
-  sawRecording: boolean;
-  sawTranscribing: boolean;
-  complete: boolean;
+  settings: Settings;
+  mics: MicrophoneInfo[];
+  keys: ApiKeyStatus[];
+  appleAvailable: boolean;
+  onChange: (patch: Partial<Settings>) => Promise<void>;
+  onKeysChanged: () => Promise<void>;
   onBack: () => void;
   onNext: () => void;
 }) {
-  // Auto-advance ~600ms after completion so the user sees the green
-  // confirmation before the next step replaces it.
-  const advanceRef = useRef(false);
-  useEffect(() => {
-    if (complete && !advanceRef.current) {
-      advanceRef.current = true;
-      const id = setTimeout(onNext, 600);
-      return () => clearTimeout(id);
-    }
-    return undefined;
-  }, [complete, onNext]);
+  const sttKeyMissing =
+    (settings.stt_provider === "groq" && !keyConfigured(keys, "groq")) ||
+    (settings.stt_provider === "open_ai" && !keyConfigured(keys, "openai"));
+  const polishKeyMissing =
+    (settings.polish_provider === "claude" && !keyConfigured(keys, "anthropic")) ||
+    (settings.polish_provider === "groq_llama" && !keyConfigured(keys, "groq"));
+  const canContinue = !sttKeyMissing && !polishKeyMissing;
 
   return (
-    <div className="card space-y-4">
+    <div className="card space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Try it out</h2>
+        <h2 className="text-xl font-semibold text-gradient-brand">Pick your setup</h2>
         <p className="mt-1 text-sm text-ink-500 dark:text-ink-300">
-          Press and hold <kbd className="kbd">{hotkeyChord || "your hotkey"}</kbd>, say a sentence, and release. We'll
-          verify your mic and hotkey are wired up correctly.
+          You can change any of this later in Settings.
         </p>
       </div>
-      <div className="space-y-2 rounded-md border border-ink-200 bg-ink-50 p-4 dark:border-ink-700 dark:bg-ink-800">
-        <CheckRow label="Hotkey fired (recording started)" done={sawRecording} />
-        <CheckRow label="Audio captured (transcribing)" done={sawTranscribing} />
-      </div>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-500">Hotkey</h3>
+        <HotkeyBinder
+          value={settings.hotkey.chord}
+          onChange={async (chord) => {
+            await api.setHotkey(chord);
+            await onChange({ hotkey: { chord } });
+          }}
+        />
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-500">Microphone</h3>
+        <select
+          className="input max-w-md"
+          value={settings.microphone_name ?? ""}
+          onChange={(e) =>
+            onChange({ microphone_name: e.target.value === "" ? null : e.target.value })
+          }
+        >
+          <option value="">System default</option>
+          {mics.map((m) => (
+            <option key={m.name} value={m.name}>
+              {m.name}
+              {m.is_default ? " (default)" : ""}
+            </option>
+          ))}
+        </select>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-500">
+          Speech-to-text
+        </h3>
+        <p className="text-xs text-ink-400">
+          Local Whisper runs entirely on your Mac. Cloud options need your own API key.
+        </p>
+        <select
+          className="input max-w-md"
+          value={settings.stt_provider}
+          onChange={(e) => onChange({ stt_provider: e.target.value as SttProvider })}
+        >
+          <option value="local">Local Whisper (free, on your Mac)</option>
+          <option value="groq">Groq — needs API key</option>
+          <option value="open_ai">OpenAI Whisper — needs API key</option>
+        </select>
+        {settings.stt_provider === "groq" && (
+          <ApiKeyInput
+            label="Groq API key"
+            provider="groq"
+            configured={keyConfigured(keys, "groq")}
+            description="Used for transcription. Stored in your macOS Keychain."
+            onChanged={onKeysChanged}
+          />
+        )}
+        {settings.stt_provider === "open_ai" && (
+          <ApiKeyInput
+            label="OpenAI API key"
+            provider="openai"
+            configured={keyConfigured(keys, "openai")}
+            description="Used for transcription. Stored in your macOS Keychain."
+            onChanged={onKeysChanged}
+          />
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-500">Cleanup</h3>
+        <p className="text-xs text-ink-400">
+          Polishes the transcript — removes "um"/"uh", adds punctuation, fixes capitalization.
+          Word choice and phrasing are preserved.
+        </p>
+        <select
+          className="input max-w-md"
+          value={settings.polish_provider}
+          onChange={(e) => onChange({ polish_provider: e.target.value as PolishProvider })}
+        >
+          {VISIBLE_PROVIDERS.map((p) => {
+            const meta = POLISH_META[p];
+            const disabled = p === "apple_intelligence" && !appleAvailable;
+            return (
+              <option key={p} value={p} disabled={disabled}>
+                {meta.label}
+                {meta.sublabel ? ` — ${meta.sublabel}` : ""}
+                {disabled ? " (macOS 26+ only)" : ""}
+              </option>
+            );
+          })}
+        </select>
+        <p className="text-xs text-ink-400">{POLISH_META[settings.polish_provider].description}</p>
+        {settings.polish_provider === "claude" && (
+          <ApiKeyInput
+            label="Anthropic API key"
+            provider="anthropic"
+            configured={keyConfigured(keys, "anthropic")}
+            description="Used for Claude cleanup. Stored in your macOS Keychain."
+            onChanged={onKeysChanged}
+          />
+        )}
+        {settings.polish_provider === "groq_llama" && (
+          <ApiKeyInput
+            label="Groq API key"
+            provider="groq"
+            configured={keyConfigured(keys, "groq")}
+            description="Used for Groq cleanup. Stored in your macOS Keychain."
+            onChanged={onKeysChanged}
+          />
+        )}
+      </section>
+
       <div className="flex items-center justify-between pt-2">
         <button type="button" className="btn-secondary" onClick={onBack}>
           Back
         </button>
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={onNext}
-        >
-          {complete ? "Continue" : "Skip"}
+        <button type="button" className="btn-primary" disabled={!canContinue} onClick={onNext}>
+          {canContinue ? "Continue" : "Add the API key above to continue"}
         </button>
       </div>
     </div>
   );
 }
 
-function CheckRow({ label, done }: { label: string; done: boolean }) {
+function keyConfigured(keys: ApiKeyStatus[], which: ApiKey): boolean {
+  return keys.find((k) => k.key === which)?.configured ?? false;
+}
+
+// ---------------------------------------------------------------------------
+// Step 4: Try it
+
+const SAMPLE_PROMPTS = [
+  "Hey, um, just a reminder to pick up groceries on the way home.",
+  "Let's meet at 3 PM tomorrow to discuss the quarterly numbers.",
+  "Email John back about the project — tell him I need the spec by Friday.",
+];
+
+function TryItStep({
+  hotkey,
+  state,
+  demo,
+  sawDemo,
+  onRetry,
+  onBack,
+  onNext,
+}: {
+  hotkey: string;
+  state: "idle" | "recording" | "transcribing";
+  demo: DemoResult | null;
+  sawDemo: boolean;
+  onRetry: () => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  const skipConfirmRef = useRef(false);
+  const [confirmingSkip, setConfirmingSkip] = useState(false);
+
+  function handleContinue() {
+    if (sawDemo) {
+      onNext();
+      return;
+    }
+    // Soft confirmation if the user is skipping the demo — single
+    // extra click, no modal. Closes if they click anywhere else.
+    if (skipConfirmRef.current) {
+      onNext();
+    } else {
+      skipConfirmRef.current = true;
+      setConfirmingSkip(true);
+    }
+  }
+
+  const stateLabel =
+    state === "recording" ? "Listening…" : state === "transcribing" ? "Cleaning up…" : "Ready";
+
   return (
-    <div className="flex items-center gap-3 text-sm">
-      <span
-        className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
-          done
-            ? "bg-emerald-500 text-white"
-            : "border border-ink-300 text-ink-400 dark:border-ink-600"
-        }`}
-        aria-hidden
-      >
-        {done ? "✓" : ""}
-      </span>
-      <span className={done ? "text-ink-700 dark:text-ink-200" : "text-ink-500"}>{label}</span>
+    <div className="card space-y-5">
+      <div>
+        <h2 className="text-xl font-semibold text-gradient-brand">Try it out</h2>
+        <p className="mt-1 text-sm text-ink-500 dark:text-ink-300">
+          Press and hold <kbd className="kbd">{hotkey}</kbd>, read one of these out loud, and release.
+          We'll show you what Dicto heard — nothing gets pasted anywhere during onboarding.
+        </p>
+      </div>
+
+      <div className="rounded-md border border-ink-200 bg-ink-50 p-4 text-sm dark:border-ink-700 dark:bg-ink-800">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
+          Try saying one of these
+        </div>
+        <ul className="space-y-1.5 text-ink-700 dark:text-ink-200">
+          {SAMPLE_PROMPTS.map((p) => (
+            <li key={p}>"{p}"</li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-semibold uppercase tracking-wide text-ink-500">Status</span>
+          <span
+            className={
+              state === "recording"
+                ? "pill-lavender"
+                : state === "transcribing"
+                ? "pill-yellow"
+                : "pill-green"
+            }
+          >
+            {stateLabel}
+          </span>
+        </div>
+        {demo ? (
+          <ResultPanel demo={demo} onRetry={onRetry} />
+        ) : (
+          <div className="rounded-md border border-dashed border-ink-300 p-5 text-center text-sm text-ink-400 dark:border-ink-600">
+            Result will appear here after you release the hotkey.
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between pt-2">
+        <button type="button" className="btn-secondary" onClick={onBack}>
+          Back
+        </button>
+        <div className="flex items-center gap-3">
+          {confirmingSkip && !sawDemo && (
+            <span className="text-xs text-ink-500">
+              Skip without trying? Click Continue again.
+            </span>
+          )}
+          <button type="button" className="btn-primary" onClick={handleContinue}>
+            Continue
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
-function DoneStep({ onFinish }: { onFinish: () => void }) {
+function ResultPanel({ demo, onRetry }: { demo: DemoResult; onRetry: () => void }) {
+  return (
+    <div className="overflow-hidden rounded-md border border-ink-200 dark:border-ink-700">
+      <div className="h-1 bg-gradient-brand" />
+      <div className="space-y-3 p-4">
+        <div>
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-500">
+            Raw transcript
+          </div>
+          <p className="rounded bg-ink-50 p-3 text-sm dark:bg-ink-800">{demo.raw || "(empty)"}</p>
+        </div>
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink-500">
+              After cleanup{demo.polishProvider ? ` (${demo.polishProvider})` : ""}
+            </div>
+            <button type="button" className="text-xs text-ink-500 underline" onClick={onRetry}>
+              Try again
+            </button>
+          </div>
+          <p className="rounded bg-ink-50 p-3 text-sm dark:bg-ink-800">
+            {demo.polished || "(empty)"}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 5: Discover
+
+function DiscoverStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
+  return (
+    <div className="card space-y-5">
+      <div>
+        <h2 className="text-xl font-semibold text-gradient-brand">Two more things to know</h2>
+        <p className="mt-1 text-sm text-ink-500 dark:text-ink-300">
+          You can find both of these in the sidebar after you finish onboarding.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="rounded-md border border-ink-200 p-4 dark:border-ink-700">
+          <h3 className="mb-1 font-semibold">📖 Dictionary</h3>
+          <p className="text-sm text-ink-600 dark:text-ink-300">
+            Add proper nouns, jargon, and names that Dicto tends to mishear. Words you add bias the
+            transcription model so it gets your custom vocabulary right.
+          </p>
+        </div>
+        <div className="rounded-md border border-ink-200 p-4 dark:border-ink-700">
+          <h3 className="mb-1 font-semibold">🕘 History</h3>
+          <p className="text-sm text-ink-600 dark:text-ink-300">
+            Every transcript stays here, locally. Re-paste a past transcript, copy it, or correct it
+            — corrections feed back into future cleanups.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between pt-2">
+        <button type="button" className="btn-secondary" onClick={onBack}>
+          Back
+        </button>
+        <button type="button" className="btn-primary" onClick={onNext}>
+          Continue
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 6: Done
+
+function DoneStep({
+  settings,
+  mics,
+  onFinish,
+  onBack,
+}: {
+  settings: Settings;
+  mics: MicrophoneInfo[];
+  onFinish: () => void;
+  onBack: () => void;
+}) {
+  const micLabel = useMemo(() => {
+    if (!settings.microphone_name) {
+      return mics.find((m) => m.is_default)?.name ?? "System default";
+    }
+    return settings.microphone_name;
+  }, [settings.microphone_name, mics]);
+
   return (
     <div className="card space-y-4 text-center">
       <div className="text-3xl">✨</div>
-      <h2 className="text-lg font-semibold">You're set up</h2>
-      <p className="text-sm text-ink-500 dark:text-ink-300">
-        Hold your hotkey from anywhere on macOS — Dicto will paste your transcript into whatever
-        you're typing in. You can change your hotkey, mic, and cleanup style in Settings any time.
+      <h2 className="text-xl font-semibold text-gradient-brand">You're all set</h2>
+      <p className="mx-auto max-w-md text-sm text-ink-500 dark:text-ink-300">
+        Hold your hotkey from anywhere on macOS — Dicto will paste your transcript wherever you're
+        typing.
       </p>
-      <div className="flex justify-center pt-2">
+      <div className="mx-auto inline-flex flex-wrap items-center justify-center gap-2 text-xs">
+        <span className="pill-lavender">Hotkey: {settings.hotkey.chord}</span>
+        <span className="pill-lavender">Mic: {micLabel}</span>
+        <span className="pill-lavender">
+          Cleanup: {POLISH_META[settings.polish_provider].label}
+        </span>
+      </div>
+      <p className="text-xs text-ink-400">Change anything in Settings any time.</p>
+      <div className="flex items-center justify-between pt-2">
+        <button type="button" className="btn-secondary" onClick={onBack}>
+          Back
+        </button>
         <button type="button" className="btn-primary" onClick={onFinish}>
-          Open Settings
+          Open Dicto
         </button>
       </div>
     </div>

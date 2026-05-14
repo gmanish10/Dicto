@@ -49,7 +49,21 @@ pub fn run() {
             // visible at the OS layer; React decides whether to paint
             // the pill based on `overlay:set-visible` events.
             overlay::init(&handle);
-            pipeline::spawn_coordinator(handle.clone(), app_state.clone());
+            // Defer the recorder thread + CGEventTap until onboarding
+            // is finished. The CGEventTap is what triggers the macOS
+            // Input Monitoring TCC prompt; running it at startup means
+            // a freshly-installed Dicto fires a permission dialog
+            // before the user has seen any UI explaining why. Gating
+            // here keeps first-launch silent until the user clicks
+            // "Grant" inside the redesigned onboarding flow, which
+            // chains `start_runtime` from `finish_onboarding`.
+            if app_state.config.read().onboarding_completed {
+                pipeline::spawn_coordinator(handle.clone(), app_state.clone());
+            } else {
+                tracing::info!(
+                    "onboarding not yet complete — runtime spawn deferred to start_runtime"
+                );
+            }
 
             // If the bundled LLM model is already on disk from a previous
             // session, populate the polish resolver now so Auto can route
@@ -108,6 +122,7 @@ pub fn run() {
             commands::record_correction,
             commands::open_main_window,
             commands::finish_onboarding,
+            commands::start_runtime,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
