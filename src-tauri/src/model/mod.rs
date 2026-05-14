@@ -18,45 +18,44 @@ pub enum ModelError {
     Network(String),
 }
 
-/// Resolve the on-disk path of a model file.
-/// Order:
-/// 1. App's user data dir (downloaded after first launch).
-/// 2. Bundled resource (shipped inside the .app).
-///
-/// If neither exists, returns `NotFound` so the caller can trigger a download.
-pub fn resolve_path(app: &AppHandle, model_name: &str) -> Result<PathBuf, ModelError> {
-    let filename = format!("{model_name}.bin");
-
-    // 1. User-downloaded location
-    let user_dir = app
+/// Where downloaded model files live: `~/Library/Application Support/<bundle>/models/`.
+fn user_models_dir(app: &AppHandle) -> Result<PathBuf, ModelError> {
+    let dir = app
         .path()
         .app_data_dir()
         .map_err(|e| ModelError::Io(std::io::Error::other(e.to_string())))?
         .join("models");
-    let user_path = user_dir.join(&filename);
+    Ok(dir)
+}
+
+/// Resolve a model file by *filename* (e.g. `"ggml-small.en.bin"` or
+/// `"qwen2.5-1.5b-instruct-q4_k_m.gguf"`). Looks in the user data dir first,
+/// then the bundled `.app/Contents/Resources/...` paths.
+pub fn resolve_file(app: &AppHandle, filename: &str) -> Result<PathBuf, ModelError> {
+    let user_dir = user_models_dir(app)?;
+    let user_path = user_dir.join(filename);
     if user_path.exists() {
         return Ok(user_path);
     }
-
-    // 2. Bundled resource
     if let Ok(resource_dir) = app.path().resource_dir() {
-        let bundled = resource_dir
-            .join("resources")
-            .join("models")
-            .join(&filename);
+        let bundled = resource_dir.join("resources").join("models").join(filename);
         if bundled.exists() {
             return Ok(bundled);
         }
-        let bundled_alt = resource_dir.join("models").join(&filename);
+        let bundled_alt = resource_dir.join("models").join(filename);
         if bundled_alt.exists() {
             return Ok(bundled_alt);
         }
     }
-
     Err(ModelError::NotFound(user_path))
 }
 
-/// Verify the SHA-256 of a model file matches the expected manifest entry.
+/// Back-compat wrapper: whisper-style `<model_name>.bin` lookup.
+pub fn resolve_path(app: &AppHandle, model_name: &str) -> Result<PathBuf, ModelError> {
+    resolve_file(app, &format!("{model_name}.bin"))
+}
+
+/// Verify the SHA-256 of a file matches the expected hex digest.
 pub fn verify(path: &Path, expected_hex: &str) -> Result<(), ModelError> {
     let mut file = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();
@@ -78,26 +77,24 @@ pub fn verify(path: &Path, expected_hex: &str) -> Result<(), ModelError> {
     Ok(())
 }
 
-/// Download a model from HuggingFace into the user data dir. Reports progress
-/// (bytes_downloaded, total_bytes) via the supplied callback. Total may be 0 if
-/// the server doesn't send Content-Length.
-pub async fn download(
+/// Generic download helper. Streams a file from `url` to the user models dir
+/// at `filename`, reporting (bytes_downloaded, total_bytes) via `progress`.
+/// If `expected_sha256` is `Some(..)` and non-empty, the file is verified
+/// after download; on mismatch the partial file is left in place for
+/// debugging.
+pub async fn download_file(
     app: &AppHandle,
-    model_name: &str,
-    expected_sha256: &str,
+    url: &str,
+    filename: &str,
+    expected_sha256: Option<&str>,
     mut progress: impl FnMut(u64, u64),
 ) -> Result<PathBuf, ModelError> {
-    let url = format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{model_name}.bin");
-    let user_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| ModelError::Io(std::io::Error::other(e.to_string())))?
-        .join("models");
+    let user_dir = user_models_dir(app)?;
     std::fs::create_dir_all(&user_dir)?;
-    let dest = user_dir.join(format!("{model_name}.bin"));
-    let tmp = user_dir.join(format!("{model_name}.bin.partial"));
+    let dest = user_dir.join(filename);
+    let tmp = user_dir.join(format!("{filename}.partial"));
 
-    let response = reqwest::get(&url)
+    let response = reqwest::get(url)
         .await
         .map_err(|e| ModelError::Network(e.to_string()))?;
     if !response.status().is_success() {
@@ -118,7 +115,29 @@ pub async fn download(
     }
     drop(file);
 
-    verify(&tmp, expected_sha256)?;
+    if let Some(sha) = expected_sha256 {
+        if !sha.is_empty() {
+            verify(&tmp, sha)?;
+        }
+    }
     std::fs::rename(&tmp, &dest)?;
     Ok(dest)
+}
+
+/// Back-compat: download a whisper.cpp model from the canonical HF mirror.
+/// Convenience wrapper around `download_file` for the common case.
+pub async fn download(
+    app: &AppHandle,
+    model_name: &str,
+    expected_sha256: &str,
+    progress: impl FnMut(u64, u64),
+) -> Result<PathBuf, ModelError> {
+    let url = format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{model_name}.bin");
+    let filename = format!("{model_name}.bin");
+    let sha = if expected_sha256.is_empty() {
+        None
+    } else {
+        Some(expected_sha256)
+    };
+    download_file(app, &url, &filename, sha, progress).await
 }

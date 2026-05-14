@@ -1,7 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export type SttProvider = "local" | "groq" | "open_ai";
-export type PolishProvider = "none" | "local_lite" | "claude" | "groq_llama";
+export type PolishProvider =
+  | "auto"
+  | "apple_intelligence"
+  | "bundled_llm"
+  | "local_lite"
+  | "claude"
+  | "groq_llama"
+  | "none";
 
 export interface HotkeyBinding {
   chord: string;

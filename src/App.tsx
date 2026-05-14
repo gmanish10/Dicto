@@ -5,6 +5,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { api } from "./lib/ipc";
 import { useSettings } from "./hooks/useSettings";
 import { Logo } from "./components/Logo";
+import { ToastStack } from "./components/ToastStack";
 
 function NavItem({ to, label }: { to: string; label: string }) {
   return (
@@ -96,6 +97,7 @@ export default function App() {
       <main className="flex-1 overflow-y-auto p-6">
         <Outlet />
       </main>
+      <ToastStack />
     </div>
   );
 }
