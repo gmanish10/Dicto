@@ -105,7 +105,10 @@ mod tests {
 
     #[test]
     fn appends_space_after_quoted_sentence() {
-        assert_eq!(format_for_injection("She said \"hello.\""), "She said \"hello.\" ");
+        assert_eq!(
+            format_for_injection("She said \"hello.\""),
+            "She said \"hello.\" "
+        );
     }
 
     #[test]

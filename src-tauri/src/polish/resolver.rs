@@ -90,7 +90,12 @@ fn is_macos_26_or_newer() -> bool {
         .ok();
     let Some(out) = info else { return false };
     let version = String::from_utf8_lossy(&out.stdout);
-    let major: u32 = version.trim().split('.').next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let major: u32 = version
+        .trim()
+        .split('.')
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
     major >= 26
 }
 
@@ -109,7 +114,9 @@ fn locate_apple_polish_binary() -> Option<std::path::PathBuf> {
     let candidates = [
         exe_dir.join("dicto-apple-polish"),
         exe_dir.join(&triple_suffix),
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("binaries").join(&triple_suffix),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("binaries")
+            .join(&triple_suffix),
     ];
 
     candidates.into_iter().find(|p| p.exists())

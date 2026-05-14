@@ -72,11 +72,7 @@ pub fn init(app: &AppHandle) {
 /// Update the overlay's visibility from the current pipeline state.
 /// Respects the `show_recording_overlay` setting — if the user opted
 /// out, this is a no-op (we emit `false` so the pill doesn't paint).
-pub fn sync_for_state(
-    app: &AppHandle,
-    state: crate::state::PipelineState,
-    enabled: bool,
-) {
+pub fn sync_for_state(app: &AppHandle, state: crate::state::PipelineState, enabled: bool) {
     let should_show = enabled && matches!(state, crate::state::PipelineState::Recording);
     // Re-position on every show in case the user changed displays.
     if should_show {

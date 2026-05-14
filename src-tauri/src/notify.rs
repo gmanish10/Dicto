@@ -37,13 +37,7 @@ fn window_is_in_user_view(app: &AppHandle) -> bool {
 }
 
 fn send(app: &AppHandle, title: &str, body: &str) {
-    if let Err(e) = app
-        .notification()
-        .builder()
-        .title(title)
-        .body(body)
-        .show()
-    {
+    if let Err(e) = app.notification().builder().title(title).body(body).show() {
         tracing::warn!(error = %e, "notification failed");
     }
 }

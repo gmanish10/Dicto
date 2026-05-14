@@ -64,7 +64,9 @@ pub fn run() {
             // when first spawned.
             if let Some(p) = polish::try_construct_apple_intelligence(&handle) {
                 app_state.polish_ctx.write().set_apple_ai(Some(p));
-                tracing::info!("apple-polish sidecar detected; resolver will route to Apple Intelligence");
+                tracing::info!(
+                    "apple-polish sidecar detected; resolver will route to Apple Intelligence"
+                );
             }
 
             // Always show the main window on launch — easier to find than hunting

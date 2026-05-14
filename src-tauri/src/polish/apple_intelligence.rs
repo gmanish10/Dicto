@@ -112,11 +112,7 @@ impl AppleIntelligencePolisher {
     /// Spawn the sidecar (if not already running) and exchange one
     /// request/response. The mutex guarantees we never interleave bytes
     /// between concurrent calls.
-    async fn exchange(
-        &self,
-        system: &str,
-        user: &str,
-    ) -> Result<String, PolishError> {
+    async fn exchange(&self, system: &str, user: &str) -> Result<String, PolishError> {
         let mut guard = self.state.lock().await;
 
         // (Re)spawn if dead or never started.
@@ -241,7 +237,9 @@ impl Polisher for AppleIntelligencePolisher {
             "apple-polish result"
         );
         if trimmed.is_empty() {
-            return Err(PolishError::OutputRejected("empty output from apple-polish"));
+            return Err(PolishError::OutputRejected(
+                "empty output from apple-polish",
+            ));
         }
         sanity_check(raw, trimmed).map_err(PolishError::OutputRejected)?;
         Ok(trimmed.to_string())
@@ -265,7 +263,12 @@ async fn spawn(binary_path: &Path) -> Result<Sidecar, PolishError> {
         .stderr(Stdio::inherit())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| PolishError::Api(format!("spawn apple-polish ({}): {e}", binary_path.display())))?;
+        .map_err(|e| {
+            PolishError::Api(format!(
+                "spawn apple-polish ({}): {e}",
+                binary_path.display()
+            ))
+        })?;
 
     let stdin = child
         .stdin
