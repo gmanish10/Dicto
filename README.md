@@ -2,11 +2,14 @@
 
 > Free, open-source push-to-talk dictation for macOS. Hold a hotkey, speak, release — cleaned-up text appears in whatever app you're using.
 
+**👉 [Download the latest release](https://github.com/gmanish10/Dicto/releases/latest)** · [What's new in v0.2.0](CHANGELOG.md)
+
 Dicto is an open-source alternative to apps like Wispr Flow. It runs entirely on-device by default (using whisper.cpp with CoreML acceleration on Apple Silicon), and optionally lets you bring your own API keys (BYOK) for higher-accuracy cloud models when you want them.
 
 - 🎙 **Push-to-talk hotkey** — hold any key chord (including modifier-only chords like Right Option or Fn) to record. Release to transcribe and inject.
 - 🧠 **Local Whisper by default** — your audio never leaves your Mac. Optionally BYOK Groq / OpenAI / Anthropic for better accents, faster long-utterance polish, or LLM cleanup.
-- ✍️ **Smart cleanup** — Dicto strips "um", "uh", false starts, fixes capitalization, and adds punctuation. **"Best available"** mode picks the right cleanup engine for your Mac automatically; smarter cloud cleanup is available if you bring an Anthropic or Groq API key.
+- ✍️ **Smart cleanup** — strips "um", "uh", false starts, fixes capitalization, and adds punctuation. On macOS 26+, Dicto can use **Apple Intelligence** for on-device LLM cleanup; "Best available" mode picks the right engine for your Mac automatically. Smarter cloud cleanup is also available if you bring an Anthropic or Groq key.
+- 🔴 **Floating recording indicator** — a small "Listening" pill sits at the top of your screen while the hotkey is held, so you always know Dicto is recording. Hidden in macOS native-fullscreen apps; the start/stop chime still plays.
 - 📖 **Custom vocabulary** — bias Whisper toward your jargon, product names, names of teammates.
 - 🔁 **Replacements** — say "newline" → `\n`, "k8s" → "Kubernetes", whatever you want.
 - 📜 **History** — last 20 transcripts, click to copy or re-paste, edit to teach Dicto your style.

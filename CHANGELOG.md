@@ -6,6 +6,73 @@ All notable changes to Dicto are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-14
+
+Feature release. On-device LLM cleanup, multi-step onboarding, a floating
+"Listening" indicator, system notifications, and a handful of dictation-pipeline
+ergonomics + safety fixes.
+
+### Install
+
+**👉 [Download Dicto_0.2.0_aarch64.dmg](https://github.com/gmanish10/Dicto/releases/download/v0.2.0/Dicto_0.2.0_aarch64.dmg)**
+
+Apple Silicon (M-series) only. Existing v0.1.2+ users get this via the built-in
+updater (About → Install and restart). First-time install: drag to `/Applications`,
+then `xattr -d com.apple.quarantine /Applications/Dicto.app` once.
+
+### Added
+- **Apple Intelligence cleanup** ([#5](https://github.com/gmanish10/Dicto/issues/5)) —
+  on macOS 26+ Dicto can polish transcripts using Apple's on-device Foundation
+  Models LLM. No API key, no network, ~1.5–2 s on M-series. Available as a
+  separate option in Settings → Cleanup, and as the preferred pick under "Best
+  available".
+- **Multi-step onboarding** ([#6](https://github.com/gmanish10/Dicto/issues/6)) —
+  Welcome → Permissions → Try it → Done. The "Try it" step listens for the first
+  successful hotkey trigger and confirms both recording + transcribing fire before
+  letting you continue, so a fresh install can't silently land in a broken state.
+- **Floating "Listening" indicator** — a click-through pill at the top center of
+  the primary display while the hotkey is held, so it's never ambiguous whether
+  Dicto is recording. Settings → "Show recording indicator" to disable. *Known
+  limitation:* macOS hides floating windows over native-fullscreen apps; the
+  start/stop chime still plays in that case.
+- **System notifications when the window is hidden**
+  ([#8](https://github.com/gmanish10/Dicto/issues/8)) — banners now appear when the
+  cleanup provider falls back or when paste is blocked by macOS secure input,
+  so you never miss the toast just because Dicto's window isn't focused.
+
+### Fixed
+- **Stuck-hotkey safety net.** Modifier-key state is now polled against the OS
+  every 200 ms in addition to the existing event tap. A brief Fn tap followed by
+  no further keyboard activity (e.g., while watching a video) used to leave the
+  chord "engaged" indefinitely; the next keystroke would then paste minutes of
+  unintended audio. Now auto-released within 200 ms; recordings that exceed the
+  max duration are discarded outright rather than transcribed and pasted.
+- **Paste-target tracking.** Cmd+V now lands in the app that was focused when
+  you triggered the hotkey, even if focus drifted during transcribe/polish. If
+  the target app has quit by then, paste falls back to the current frontmost app.
+- **Whisper sound annotations stripped.** `[exhales]`, `(wind howling)`,
+  `[chuckles]`, `(music playing)` and similar captions whisper occasionally
+  picks up from its training data are now removed at the transcribe layer
+  before they reach any polish step.
+- **Trailing space / newline after polish.** Transcripts ending in
+  sentence-terminating punctuation get a trailing space; those ending in a
+  bullet or numbered list get a trailing newline. Continued dictation flows
+  into the next line/sentence without manual cursor work.
+- **Settings migration robustness**
+  ([#9](https://github.com/gmanish10/Dicto/issues/9)) — settings now load field by
+  field. Adding or renaming a settings field no longer wipes the rest of the
+  user's preferences.
+
+### Known limitations
+- **Bundled on-device LLM cleanup** ([#4](https://github.com/gmanish10/Dicto/issues/4))
+  is plumbed end-to-end but disabled in v0.2.0. `llama-cpp-2` 0.1.146 fails to
+  parse valid Qwen 2.5 GGUFs on macOS 26 (Tahoe) — known upstream regression.
+  Will re-enable once a fix lands. Apple Intelligence covers the same use case
+  on macOS 26.
+- **Recording indicator in fullscreen apps.** Native-fullscreen apps create their
+  own Space and macOS hides floating windows there. The indicator works
+  everywhere else; chime stays as the universal feedback.
+
 ## [0.1.2] - 2026-05-14
 
 Patch release fixing a UX bug in the auto-updater itself.
