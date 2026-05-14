@@ -40,6 +40,7 @@
     "active": true,
     "category": "Productivity",
     "copyright": "© 2026 Dicto contributors. MIT licensed.",
+    "createUpdaterArtifacts": true,
     "targets": [
       "dmg",
       "app"
