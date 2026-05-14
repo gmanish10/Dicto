@@ -99,7 +99,8 @@ export const api = {
   setHotkey: (chord: string) => invoke<void>("set_hotkey", { chord }),
   pauseDictation: () => invoke<void>("pause_dictation"),
   resumeDictation: () => invoke<void>("resume_dictation"),
-  recheckForUpdates: () => invoke<boolean>("recheck_for_updates"),
+  recheckForUpdates: () => invoke<string | null>("recheck_for_updates"),
+  installPendingUpdate: () => invoke<void>("install_pending_update"),
   reinjectTranscript: (id: number) => invoke<void>("reinject_transcript", { id }),
   recordCorrection: (raw: string, finalText: string) =>
     invoke<void>("record_correction", { raw, finalText }),

@@ -6,6 +6,26 @@ All notable changes to Dicto are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-14
+
+Patch release fixing a UX bug in the auto-updater itself.
+
+### Fixed
+- **Auto-updater "Install" actually installs.** Previously the About → "Check for
+  updates" button only *checked* for a new version, then showed "Update available
+  — restart to install." But restarting did nothing because the update was never
+  downloaded. v0.1.2 adds an explicit "Install and restart" button that downloads
+  the signed `.app.tar.gz`, verifies the signature against the embedded pubkey,
+  swaps the running `.app`, and restarts Dicto. From v0.1.2 onward, auto-updates
+  work end-to-end.
+
+### Heads-up for v0.1.0 / v0.1.1 users
+
+Both v0.1.0 and v0.1.1 shipped with the broken About-page updater. They can
+*detect* a new release but can't actually install it. You'll need to manually
+download `Dicto_0.1.2_aarch64.dmg` from the release page **one last time**.
+From v0.1.2 onward, the About → "Install and restart" button does what it says.
+
 ## [0.1.1] - 2026-05-14
 
 Patch release. Two bug fixes + an auto-updater that actually works.

@@ -73,6 +73,7 @@ pub fn run() {
             commands::pause_dictation,
             commands::resume_dictation,
             commands::recheck_for_updates,
+            commands::install_pending_update,
             commands::reinject_transcript,
             commands::record_correction,
             commands::open_main_window,

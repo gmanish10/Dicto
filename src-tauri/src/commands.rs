@@ -162,17 +162,49 @@ pub fn resume_dictation(state: State<'_, SharedState>) -> Result<(), String> {
     state.save_settings().map_err(|e| e.to_string())
 }
 
+/// Check whether an update is available. Returns the new version string
+/// if one is pending, or `None` if the user is already current.
 #[tauri::command]
-pub async fn recheck_for_updates(app: AppHandle) -> Result<bool, String> {
+pub async fn recheck_for_updates(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_updater::UpdaterExt;
-    match app.updater() {
-        Ok(updater) => match updater.check().await {
-            Ok(Some(_update)) => Ok(true),
-            Ok(None) => Ok(false),
-            Err(e) => Err(format!("update check failed: {e}")),
-        },
-        Err(e) => Err(format!("updater unavailable: {e}")),
+    let updater = app
+        .updater()
+        .map_err(|e| format!("updater unavailable: {e}"))?;
+    match updater
+        .check()
+        .await
+        .map_err(|e| format!("update check failed: {e}"))?
+    {
+        Some(update) => Ok(Some(update.version.clone())),
+        None => Ok(None),
     }
+}
+
+/// Download and apply a pending update, then restart Dicto.
+///
+/// Caller-side flow:
+/// 1. Show a "Downloading..." indicator.
+/// 2. Invoke this command. It returns only on failure; on success the
+///    process is replaced (Tauri restarts the new binary).
+///
+/// We don't wire progress events to the frontend in v0.1.2 (keeping the
+/// fix minimal); a follow-up issue will add a progress bar.
+#[tauri::command]
+pub async fn install_pending_update(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app
+        .updater()
+        .map_err(|e| format!("updater unavailable: {e}"))?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|e| format!("update check failed: {e}"))?
+        .ok_or_else(|| "no update available".to_string())?;
+    update
+        .download_and_install(|_chunk_length, _content_length| {}, || {})
+        .await
+        .map_err(|e| format!("update install failed: {e}"))?;
+    app.restart();
 }
 
 #[tauri::command]
