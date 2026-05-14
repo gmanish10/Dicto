@@ -63,9 +63,12 @@ export default function Settings() {
               />
             </div>
 
-            <label className="card">
-              <span className="label">Microphone</span>
+            <div className="card">
+              <label className="label" htmlFor="microphone-select">
+                Microphone
+              </label>
               <select
+                id="microphone-select"
                 className="input"
                 value={settings.microphone_name ?? ""}
                 onChange={(e) =>
@@ -82,7 +85,7 @@ export default function Settings() {
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
 
             <div className="card grid grid-cols-2 gap-3">
               <label className="flex items-center gap-2 text-sm">
@@ -111,12 +114,15 @@ export default function Settings() {
             title="Speech-to-text"
             subtitle="How your voice is turned into words."
           />
-          <label className="card">
-            <span className="label">Provider</span>
+          <div className="card">
+            <label className="label" htmlFor="stt-provider">
+              Provider
+            </label>
             <p className="mb-2 text-xs text-ink-400">
               "Local Whisper" runs entirely on your Mac. Cloud options need your own API key.
             </p>
             <select
+              id="stt-provider"
               className="input"
               value={settings.stt_provider}
               onChange={(e) =>
@@ -129,7 +135,7 @@ export default function Settings() {
               <option value="groq">Groq Whisper — fast cloud, needs Groq key</option>
               <option value="open_ai">OpenAI Whisper — cloud, needs OpenAI key</option>
             </select>
-          </label>
+          </div>
         </section>
 
         {/* --- Cleanup (Polish) --- */}
