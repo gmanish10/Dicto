@@ -1,4 +1,5 @@
 pub mod paste;
+pub mod target;
 
 use thiserror::Error;
 

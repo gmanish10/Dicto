@@ -110,7 +110,7 @@ struct ModState {
 }
 
 struct CallbackContext {
-    state: parking_lot::Mutex<ModState>,
+    state: Arc<parking_lot::Mutex<ModState>>,
     hotkey: Arc<RwLock<Option<ParsedHotkey>>>,
     paused: Arc<RwLock<bool>>,
     tx: Sender<HotkeyEvent>,
@@ -271,7 +271,19 @@ extern "C" {
     fn CGEventTapEnable(tap: *mut c_void, enable: bool);
     fn CGEventGetFlags(event: *mut c_void) -> u64;
     fn CGEventGetIntegerValueField(event: *mut c_void, field: u32) -> i64;
+    /// Query the current modifier-flag state directly from the input
+    /// source. Lets us reconcile our event-driven `ModState` against
+    /// reality on a timer — important because if the user briefly taps
+    /// Fn and then doesn't touch the keyboard, the matching release
+    /// `flagsChanged` event never fires through our tap and the state
+    /// stays "engaged" indefinitely.
+    fn CGEventSourceFlagsState(state_id: i32) -> u64;
 }
+
+/// `kCGEventSourceStateHIDSystemState` — query the raw HID layer rather
+/// than a per-session view. We want the truth from hardware, not whatever
+/// the focused session believes.
+const CG_EVENT_SOURCE_STATE_HID: i32 = 1;
 
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
@@ -288,17 +300,30 @@ extern "C" {
 
 /// Spawn the OS thread that owns the CGEventTap. Blocks the thread on
 /// CFRunLoopRun for the life of the process.
+///
+/// Also spawns a companion thread that polls `CGEventSourceFlagsState`
+/// every `POLL_INTERVAL_MS` to detect "stuck-modifier" scenarios — see
+/// `spawn_modifier_poll` for the full failure mode.
 pub fn spawn(
     tx: Sender<HotkeyEvent>,
     hotkey: Arc<RwLock<Option<ParsedHotkey>>>,
     paused: Arc<RwLock<bool>>,
 ) {
+    let shared_state = Arc::new(parking_lot::Mutex::new(ModState::default()));
+    spawn_modifier_poll(
+        shared_state.clone(),
+        hotkey.clone(),
+        paused.clone(),
+        tx.clone(),
+    );
+
+    let state_for_tap = shared_state;
     std::thread::Builder::new()
         .name("dicto-hotkey".into())
         .spawn(move || {
             tracing::info!("dicto-hotkey thread starting");
             let ctx = Box::new(CallbackContext {
-                state: parking_lot::Mutex::new(ModState::default()),
+                state: state_for_tap,
                 hotkey,
                 paused,
                 tx,
@@ -341,4 +366,91 @@ pub fn spawn(
             }
         })
         .expect("failed to spawn dicto-hotkey thread");
+}
+
+/// How often the modifier-poll thread reconciles our event-driven state
+/// against the actual OS state. 200 ms keeps stuck-modifier recoveries
+/// near-instant while costing ~5 wakeups/second — negligible.
+const POLL_INTERVAL_MS: u64 = 200;
+
+/// Companion thread to the CGEventTap that periodically queries the
+/// real OS modifier-flag state and reconciles our event-driven
+/// `ModState`.
+///
+/// **Why this exists.** Our tap only fires on key/flagsChanged events.
+/// If the user briefly taps Fn (engaging the chord) and then stops
+/// touching the keyboard — e.g., watches a video — the matching
+/// flagsChanged-release event sometimes arrives well after the actual
+/// physical release (the Globe key behavior on Apple Silicon, focus
+/// transitions, and Tahoe's stricter input handling have all been
+/// observed swallowing it). Without polling, we'd believe the chord is
+/// held for arbitrary durations and record audio the user never
+/// intended — and worse, paste it into the first thing they typed.
+///
+/// The poll calls `CGEventSourceFlagsState(HID)`, which returns the
+/// authoritative current modifier state from the hardware layer.
+/// `main_key_down` is intentionally NOT touched here — regular key
+/// releases reliably generate `keyUp` events, and the poll has no view
+/// into per-key state.
+fn spawn_modifier_poll(
+    state: Arc<parking_lot::Mutex<ModState>>,
+    hotkey: Arc<RwLock<Option<ParsedHotkey>>>,
+    paused: Arc<RwLock<bool>>,
+    tx: Sender<HotkeyEvent>,
+) {
+    std::thread::Builder::new()
+        .name("dicto-mod-poll".into())
+        .spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_millis(POLL_INTERVAL_MS));
+
+            let flags = unsafe { CGEventSourceFlagsState(CG_EVENT_SOURCE_STATE_HID) };
+
+            let mut state_guard = state.lock();
+            let was_fired = state_guard.fired;
+            let prev = *state_guard;
+            apply_flags(&mut state_guard, flags);
+
+            // No-op fast path: state didn't drift.
+            if state_guard.fn_key == prev.fn_key
+                && state_guard.cmd == prev.cmd
+                && state_guard.shift == prev.shift
+                && state_guard.control == prev.control
+                && state_guard.option_left == prev.option_left
+                && state_guard.option_right == prev.option_right
+            {
+                continue;
+            }
+
+            tracing::debug!(
+                fn_key = state_guard.fn_key,
+                cmd = state_guard.cmd,
+                shift = state_guard.shift,
+                control = state_guard.control,
+                option_left = state_guard.option_left,
+                option_right = state_guard.option_right,
+                "modifier state reconciled from HID poll"
+            );
+
+            if *paused.read() {
+                state_guard.fired = match hotkey.read().as_ref() {
+                    Some(h) => chord_satisfied(&state_guard, h),
+                    None => false,
+                };
+                continue;
+            }
+
+            let satisfied = match hotkey.read().as_ref() {
+                Some(h) => chord_satisfied(&state_guard, h),
+                None => false,
+            };
+
+            if !satisfied && was_fired {
+                state_guard.fired = false;
+                tracing::warn!(
+                    "hotkey chord auto-released via HID poll — missed flagsChanged event upstream"
+                );
+                let _ = tx.send(HotkeyEvent::Up);
+            }
+        })
+        .expect("failed to spawn dicto-mod-poll thread");
 }

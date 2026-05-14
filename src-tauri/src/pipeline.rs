@@ -155,6 +155,11 @@ pub fn spawn_coordinator(app: AppHandle, state: SharedState) {
 
     tauri::async_runtime::spawn(async move {
         let mut recording_started_at: Option<Instant> = None;
+        // App that was frontmost when the user pressed the hotkey.
+        // Carried through to the inject step so the polished transcript
+        // pastes back into the same window the user was typing in, even
+        // if focus drifted during transcription / polish.
+        let mut paste_target: Option<crate::inject::target::TargetApp> = None;
 
         loop {
             // Block on the hotkey channel without holding any !Send state.
@@ -191,6 +196,13 @@ pub fn spawn_coordinator(app: AppHandle, state: SharedState) {
                     match ack {
                         Ok(Ok(Ok(()))) => {
                             recording_started_at = Some(Instant::now());
+                            // Snapshot the frontmost app NOW, before our
+                            // own UI (overlay window) appears and before
+                            // the user has any reason to switch contexts.
+                            paste_target = crate::inject::target::capture_frontmost();
+                            if let Some(t) = paste_target {
+                                tracing::debug!(pid = t.pid(), "captured paste target");
+                            }
                             state_for_loop.set_pipeline_state(PipelineState::Recording);
                             menubar::update_state_indicator(&app_for_loop, &state_for_loop);
                             let _ = app_for_loop.emit("pipeline:recording-started", ());
@@ -245,10 +257,31 @@ pub fn spawn_coordinator(app: AppHandle, state: SharedState) {
                         .max_recording_seconds
                         .clamp(1, DEFAULT_MAX_RECORDING_S * 2);
                     if duration.as_secs() > max_s as u64 {
-                        let _ = app_for_loop.emit(
-                            "pipeline:warning",
-                            format!("Recording exceeded {}s limit", max_s),
+                        // SAFETY: A recording longer than `max_s` is almost
+                        // always a stuck-modifier (CGEventTap missing the
+                        // Fn / Cmd release event). Transcribing + pasting
+                        // who-knows-how-much audio into the user's next
+                        // keystroke target is a privacy + injection
+                        // hazard. Discard outright and warn.
+                        tracing::warn!(
+                            elapsed_s = duration.as_secs(),
+                            max_s,
+                            "recording exceeded max duration — discarding audio (likely stuck hotkey)"
                         );
+                        let msg = format!(
+                            "Recording exceeded {} s and was discarded. Possible stuck hotkey \u{2014} re-press your shortcut to try again.",
+                            max_s
+                        );
+                        let _ = app_for_loop.emit("pipeline:warning", msg.clone());
+                        let _ = app_for_loop.emit("pipeline:toast", msg.clone());
+                        crate::notify::notify_if_hidden(
+                            &app_for_loop,
+                            "Dicto \u{2014} recording discarded",
+                            &msg,
+                        );
+                        state_for_loop.set_pipeline_state(PipelineState::Idle);
+                        menubar::update_state_indicator(&app_for_loop, &state_for_loop);
+                        continue;
                     }
 
                     state_for_loop.set_pipeline_state(PipelineState::Transcribing);
@@ -258,6 +291,7 @@ pub fn spawn_coordinator(app: AppHandle, state: SharedState) {
                     let app_clone = app_for_loop.clone();
                     let state_clone = state_for_loop.clone();
                     let local_whisper_clone = local_whisper_for_loop.clone();
+                    let target_for_run = paste_target.take();
                     tauri::async_runtime::spawn(async move {
                         if let Err(err) = run_utterance(
                             app_clone.clone(),
@@ -267,6 +301,7 @@ pub fn spawn_coordinator(app: AppHandle, state: SharedState) {
                             audio.sample_rate,
                             audio.channels,
                             duration.as_millis() as i64,
+                            target_for_run,
                         )
                         .await
                         {
@@ -288,9 +323,15 @@ async fn run_utterance(
     state: SharedState,
     local_whisper: Arc<RwLock<Option<Arc<LocalWhisper>>>>,
     pcm: Vec<f32>,
+    // Note on positional args: see the call site for the order. The
+    // `paste_target` was added at the end to keep diff churn minimal.
+    // It threads the frontmost app captured at hotkey-down through to
+    // the inject step so Cmd+V lands in the right window even if focus
+    // drifted during transcribe/polish.
     sample_rate: u32,
     channels: u16,
     duration_ms: i64,
+    paste_target: Option<crate::inject::target::TargetApp>,
 ) -> anyhow::Result<()> {
     // Resample to 16k mono off the async runtime.
     let pcm16 =
@@ -370,6 +411,18 @@ async fn run_utterance(
     // user can keep dictating without manual cursor work. History keeps
     // the un-suffixed `final_text` for clean re-reads.
     let injectable = crate::inject::format_for_injection(&final_text);
+
+    // Refocus the app the user was in when they triggered the hotkey,
+    // then give macOS a beat to process the activation before we post
+    // Cmd+V. Without this, long transcribe/polish times let focus drift
+    // and the paste lands wherever happens to be frontmost.
+    if let Some(target) = paste_target {
+        let activated = crate::inject::target::activate(target);
+        tracing::debug!(pid = target.pid(), activated, "refocused paste target");
+        if activated {
+            tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+        }
+    }
 
     // Inject into the focused app.
     let injector = ClipboardPasteInjector;
