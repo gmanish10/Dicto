@@ -318,6 +318,10 @@ pub fn spawn_coordinator(app: AppHandle, state: SharedState) {
     });
 }
 
+// 8 args is one over clippy's default threshold of 7; bundling them into a
+// struct would just add ceremony around a single-call-site function. Pure
+// data flow, no shared state — the `allow` is the right knob here.
+#[allow(clippy::too_many_arguments)]
 async fn run_utterance(
     app: AppHandle,
     state: SharedState,
