@@ -6,6 +6,48 @@ All notable changes to Dicto are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-15
+
+Patch release: four fixes flagged after testing v0.3.0, plus a complete visual restyle.
+
+### Install
+
+**👉 [Download Dicto_0.3.1_aarch64.dmg](https://github.com/gmanish10/Dicto/releases/download/v0.3.1/Dicto_0.3.1_aarch64.dmg)**
+
+Apple Silicon (M-series) only. Existing v0.1.2+ users get this via the built-in
+updater (About → Install and restart). First-time install: drag to `/Applications`,
+then `xattr -d com.apple.quarantine /Applications/Dicto.app` once.
+
+### Fixed
+- **Chime fired on arrow / F-keys / Page Up-Down / Home-End** when using the
+  Fn hotkey. macOS sets `kCGEventFlagMaskSecondaryFn` in the event flags of
+  every "function row" key as a side effect — Dicto was treating that as
+  "the Fn hotkey is pressed", so each arrow tap played start + stop chimes
+  (no transcription, since the recording was under the minimum-length
+  threshold). Now only `flagsChanged` events update modifier state; key
+  down / key up events don't touch it.
+- **Onboarding Welcome screen mis-stated the default hotkey** as ⌃Space —
+  it's actually the Fn / 🌐 globe key. Copy updated to match.
+
+### Changed
+- **Permissions step UX.** Granted permissions now show a clean status pill
+  and a small "Change in System Settings" link rather than an always-present
+  "Request" + "Open System Settings" pair. Not-yet-granted permissions show
+  a single prominent "Allow" button.
+- **Onboarding resumes after a forced relaunch.** macOS sometimes requires
+  the app to quit + reopen when you grant Accessibility or Input Monitoring.
+  Dicto now persists the current onboarding step to `settings.json`, so
+  relaunching mid-flow drops you back exactly where you were instead of
+  restarting from Welcome. Already-granted permissions also auto-advance
+  past the Permissions step.
+- **Warm-minimal visual restyle.** Dropped the pastel lavender/sky/blush
+  palette in favor of a single warm amber accent (`#D4894A`) on a cream +
+  warm-charcoal substrate. Status pills shifted from soft pastels to
+  warm-minimal hues (olive / brick / taupe / amber). Cards lost the hard
+  1-px borders in favor of larger radii and soft shadows. Logo recolored:
+  warm-charcoal square with cream sound-wave bars and a single amber
+  middle bar.
+
 ## [0.3.0] - 2026-05-14
 
 Onboarding redesign + pastel visual refresh.

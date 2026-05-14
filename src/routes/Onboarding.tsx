@@ -64,9 +64,13 @@ interface DemoResult {
   polishProvider: string | null;
 }
 
+function isStepId(s: string): s is StepId {
+  return STEPS.some((step) => step.id === s);
+}
+
 export default function Onboarding() {
   const navigate = useNavigate();
-  const [stepId, setStepId] = useState<StepId>("welcome");
+  const [stepId, setStepIdInternal] = useState<StepId>("welcome");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [perms, setPerms] = useState<PermissionsSnapshot>(initialPerms);
   const [keys, setKeys] = useState<ApiKeyStatus[]>([]);
@@ -76,12 +80,55 @@ export default function Onboarding() {
   const [sawDemo, setSawDemo] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
 
-  // Initial settings + key status load.
-  useEffect(() => {
-    void api.getSettings().then(setSettings);
-    void api.getApiKeyStatus().then(setKeys);
-    void api.checkPolishAvailability().then((a) => setAppleAvailable(a.apple_intelligence.available));
+  // Persist the current step to disk. macOS forces a quit+relaunch when
+  // the user grants Accessibility or Input Monitoring; without this the
+  // app would land back on Welcome and the user would have to walk
+  // through everything again. Storing the step ID server-side keeps the
+  // resume seamless.
+  const setStepId = useCallback((next: StepId) => {
+    setStepIdInternal(next);
+    void api
+      .getSettings()
+      .then((cur) => api.setSettings({ ...cur, onboarding_step: next }))
+      .catch(() => undefined);
   }, []);
+
+  // Initial settings + key status load. If `onboarding_step` is set and
+  // valid, resume there instead of starting at Welcome. We also call
+  // `start_runtime` eagerly if the saved step is past Permissions —
+  // it's idempotent, and skipping it would leave the hotkey dead during
+  // Try-it after a relaunch.
+  useEffect(() => {
+    void api.getSettings().then((s) => {
+      setSettings(s);
+      if (s.onboarding_step && isStepId(s.onboarding_step)) {
+        setStepIdInternal(s.onboarding_step);
+        if (["models", "try-it", "discover", "done"].includes(s.onboarding_step)) {
+          void api.startRuntime();
+        }
+      }
+    });
+    void api.getApiKeyStatus().then(setKeys);
+    void api
+      .checkPolishAvailability()
+      .then((a) => setAppleAvailable(a.apple_intelligence.available));
+  }, []);
+
+  // Auto-advance past Permissions if all three are already granted —
+  // happens when the user comes back after a macOS-forced relaunch
+  // mid-flow.
+  useEffect(() => {
+    if (stepId !== "permissions") return;
+    if (
+      perms.microphone === "granted" &&
+      perms.accessibility === "granted" &&
+      perms.input_monitoring === "granted"
+    ) {
+      void api.startRuntime();
+      setStepId("models");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepId, perms.microphone, perms.accessibility, perms.input_monitoring]);
 
   // Auto-pre-select Apple Intelligence cleanup on macOS 26+ if the user
   // is still on the default `auto`. Picks the best free option without
@@ -315,8 +362,9 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
         <li>Hold your hotkey. Speak. Release.</li>
         <li>Dicto types the cleaned-up text into whatever app you're using.</li>
         <li>
-          The default hotkey is <kbd className="kbd">⌃ Space</kbd>. You can change it in the next
-          step.
+          The default hotkey is the <kbd className="kbd">Fn</kbd> /{" "}
+          <kbd className="kbd">🌐</kbd> globe key (bottom-left of your keyboard). You can pick a
+          different one in the next step.
         </li>
         <li>
           <strong>Everything stays on your Mac</strong> unless you opt into a cloud cleanup

@@ -137,7 +137,10 @@ export default function Settings() {
                 type="button"
                 className="btn-secondary text-xs"
                 onClick={async () => {
-                  await update({ onboarding_completed: false });
+                  // Clear the persisted step too — otherwise we'd land
+                  // on whatever step the previous run finished on (e.g.
+                  // "done") instead of starting from Welcome.
+                  await update({ onboarding_completed: false, onboarding_step: "" });
                   window.location.hash = "#/onboarding";
                 }}
               >

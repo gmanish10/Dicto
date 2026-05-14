@@ -5,36 +5,45 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Warm-minimal palette introduced in v0.3.1. The pastel
+        // lavender/blush/sky that shipped in v0.3.0 was replaced —
+        // a dictation app the user keeps open all day reads better
+        // with a calmer neutral substrate + a single warm accent.
+        //
+        // Ink scale is now slightly warm-shifted (a touch of brown
+        // in the grays) so it harmonizes with the amber accent and
+        // the cream backgrounds. Pure cool grays clashed with the
+        // amber and made the UI feel uncoordinated.
         ink: {
-          50: "#f7f7f8",
-          100: "#ececef",
-          200: "#d4d4da",
-          300: "#a8a8b3",
-          400: "#7a7a87",
-          500: "#54545f",
-          600: "#3a3a43",
-          700: "#26262d",
-          800: "#1a1a1f",
-          900: "#0e0e12",
+          50: "#FAF6EF", // cream — main app bg (light mode)
+          100: "#F1ECE3",
+          200: "#E5DDD0",
+          300: "#C7BBA8",
+          400: "#8B7E6C",
+          500: "#5E5444",
+          600: "#3F382C",
+          700: "#2A2520", // body text (light), card bg (dark)
+          800: "#1F1B18",
+          900: "#14110F", // body text (dark), darkest surfaces
         },
-        // Pastel palette introduced in v0.3.0. The old `accent` was a
-        // single dusty blue; the logo already carried a richer
-        // gradient that nothing else used. v0.3.0 promotes a soft
-        // pastel lavender as primary accent and adds the gradient
-        // stops + pastel status hues as `brand.*` tokens. White text
-        // reads poorly on these lightnesses, so primary buttons use
-        // dark ink text (see `.btn-primary` in index.css).
         accent: {
-          DEFAULT: "#B5ACE5", // pastel lavender
-          hover: "#9F94D6", // deeper lavender for hover
+          DEFAULT: "#D4894A", // warm amber — single brand color
+          hover: "#B8723D",
         },
         brand: {
-          sky: "#A7C7E7", // pastel sky blue
-          lavender: "#B5ACE5",
-          blush: "#F2C6D1", // pastel blush — recording dot
-          mint: "#A8D5BA", // pastel sage — granted/success
-          amber: "#E8C97C", // pastel honey — not_determined
-          rose: "#E08E96", // muted rose — denied
+          // Status pill hues — chosen so they coexist with amber
+          // without landing in any of the excluded families
+          // (blue / pink / purple / green). Granted is a warm
+          // sage-on-the-warm-side that reads as positive without
+          // being green; denied is a muted brick; pending is a
+          // soft taupe.
+          cream: "#F5E9D7", // gradient mid-stop, subtle accent bg
+          sand: "#E6D2B5", // hover surfaces, secondary chips
+          amber: "#D4894A",
+          terracotta: "#A85A38", // recording dot, "configured" pills
+          olive: "#8B9670", // "granted" pill (warm, not green-coded)
+          brick: "#A04848", // "denied" pill
+          taupe: "#8B7960", // "not_determined" pill
         },
       },
       fontFamily: {

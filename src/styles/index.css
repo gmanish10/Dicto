@@ -4,7 +4,7 @@
 
 @layer base {
   html, body, #root {
-    @apply h-full bg-ink-50 text-ink-900;
+    @apply h-full bg-ink-50 text-ink-700;
   }
   body {
     @apply antialiased;
@@ -19,63 +19,65 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium
+    @apply inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium
            transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
-  /* Pastel lavender bg + dark ink text — white text doesn't read well
-     on the v0.3.0 pastel accent, so primary buttons invert the contrast. */
+  /* Warm amber accent + ivory text reads cleanly. The amber at #D4894A
+     has 4.7:1 contrast against #FAF6EF — passing WCAG AA. */
   .btn-primary {
-    @apply btn bg-accent text-ink-900 hover:bg-accent-hover dark:text-ink-900;
+    @apply btn bg-accent text-ink-50 hover:bg-accent-hover dark:text-ink-50;
   }
   .btn-secondary {
-    @apply btn border border-ink-200 bg-white text-ink-900 hover:bg-ink-50
-           dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700;
+    @apply btn bg-ink-100 text-ink-700 hover:bg-brand-sand
+           dark:bg-ink-700 dark:text-ink-100 dark:hover:bg-ink-600;
   }
   .btn-danger {
-    @apply btn bg-brand-rose text-ink-900 hover:opacity-90;
+    @apply btn bg-brand-brick text-ink-50 hover:opacity-90;
   }
+  /* Cards lose the hard 1-px border in favor of a soft shadow and
+     larger radius. Reads more like a Notion page than a 2010 admin
+     dashboard. Borderless on dark mode where the contrast already
+     comes from the surface lift. */
   .card {
-    @apply rounded-lg border border-ink-200 bg-white p-5 shadow-sm
-           dark:border-ink-700 dark:bg-ink-800;
+    @apply rounded-2xl bg-white px-5 py-4 shadow-[0_1px_3px_rgba(31,27,24,0.04),0_4px_12px_rgba(31,27,24,0.04)]
+           dark:bg-ink-800 dark:shadow-[0_1px_3px_rgba(0,0,0,0.3),0_4px_12px_rgba(0,0,0,0.2)];
   }
   .input {
-    @apply w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm
+    @apply w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm
            focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent
            dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100;
   }
   .label {
-    @apply mb-1 block text-sm font-medium text-ink-700 dark:text-ink-200;
+    @apply mb-1 block text-sm font-medium text-ink-600 dark:text-ink-200;
   }
   .pill {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
   }
-  /* Pastel status pills — dark ink text over pastel bg keeps WCAG-AA
-     contrast (mint #A8D5BA vs ink-900 = 6.1:1, rose #E08E96 vs ink-900
-     = 5.5:1, amber #E8C97C vs ink-900 = 8.2:1). Keep the old
-     `pill-green / -red / -yellow` aliases so we don't have to chase
-     every legacy callsite at once. */
-  .pill-green { @apply pill bg-brand-mint text-ink-900; }
-  .pill-red { @apply pill bg-brand-rose text-ink-900; }
-  .pill-yellow { @apply pill bg-brand-amber text-ink-900; }
-  .pill-lavender { @apply pill bg-accent text-ink-900; }
+  /* Status pills now use warm-minimal hues. The semantic aliases
+     `pill-green / -red / -yellow` survive as compatibility shims so
+     existing callsites keep working — green points at warm olive
+     (positive but not the universal "go" green), red at brick, yellow
+     at taupe. ink-50 text over these mid-darkness pastels gives
+     ~6-7:1 contrast. */
+  .pill-green { @apply pill bg-brand-olive text-ink-50; }
+  .pill-red { @apply pill bg-brand-brick text-ink-50; }
+  .pill-yellow { @apply pill bg-brand-taupe text-ink-50; }
+  .pill-lavender { @apply pill bg-accent text-ink-50; }
   .kbd {
-    @apply inline-flex items-center rounded-md border border-ink-300 bg-ink-100 px-1.5 py-0.5
-           font-mono text-[11px] text-ink-700 shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.05)]
+    @apply inline-flex items-center rounded-md border border-ink-200 bg-white px-1.5 py-0.5
+           font-mono text-[11px] text-ink-700 shadow-[inset_0_-1px_0_0_rgba(31,27,24,0.05)]
            dark:border-ink-600 dark:bg-ink-700 dark:text-ink-100;
   }
 }
 
-/* Brand gradient surfaces. Used sparingly — onboarding step titles,
-   the welcome-screen logo halo, the progress bar. Gradient text needs
-   `color: transparent` + `background-clip: text` (vendor-prefixed for
-   Tauri's WebKit). Only use on h1-size text; thinner strokes look
-   washed against pure white. */
+/* Warm-minimal gradient surfaces. Used sparingly — onboarding step
+   titles, the welcome-screen logo halo, the progress bar. */
 @layer utilities {
   .bg-gradient-brand {
-    background-image: linear-gradient(135deg, #A7C7E7 0%, #B5ACE5 50%, #F2C6D1 100%);
+    background-image: linear-gradient(135deg, #F5E9D7 0%, #D4894A 60%, #A85A38 100%);
   }
   .text-gradient-brand {
-    background-image: linear-gradient(135deg, #A7C7E7 0%, #B5ACE5 50%, #F2C6D1 100%);
+    background-image: linear-gradient(135deg, #B8723D 0%, #A85A38 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;

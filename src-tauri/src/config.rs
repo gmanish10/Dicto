@@ -59,6 +59,14 @@ pub struct Settings {
     pub auto_paste: bool,
     pub max_recording_seconds: u32,
     pub onboarding_completed: bool,
+    /// Persisted step the user was on when they last left the onboarding
+    /// flow. Empty string before onboarding starts; one of the step IDs
+    /// from `Onboarding.tsx` ("welcome" / "permissions" / "models" /
+    /// "try-it" / "discover" / "done") otherwise. Lets us resume after
+    /// the macOS-forced quit-and-relaunch that follows an Accessibility
+    /// or Input Monitoring grant — without this, the user lands back on
+    /// Welcome and has to walk through the flow again.
+    pub onboarding_step: String,
     pub paused: bool,
     pub launch_at_login: bool,
     pub telemetry_opted_in: bool,
@@ -86,6 +94,7 @@ impl Settings {
             launch_at_login: false,
             telemetry_opted_in: false,
             show_recording_overlay: true,
+            onboarding_step: String::new(),
         }
     }
 }
@@ -191,6 +200,7 @@ fn merge_into_defaults(value: serde_json::Value) -> Settings {
         "show_recording_overlay",
         &mut settings.show_recording_overlay,
     );
+    pick(&map, "onboarding_step", &mut settings.onboarding_step);
 
     settings
 }

@@ -30,6 +30,10 @@ export interface Settings {
   launch_at_login: boolean;
   telemetry_opted_in: boolean;
   show_recording_overlay: boolean;
+  /** Persisted step the user was on if onboarding hasn't finished yet.
+   *  Empty string before onboarding starts. Used to resume after macOS
+   *  forces a relaunch on permission grant. */
+  onboarding_step: string;
 }
 
 export type PermissionStatus = "granted" | "denied" | "not_determined";

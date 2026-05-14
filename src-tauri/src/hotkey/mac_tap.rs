@@ -172,6 +172,7 @@ fn apply_flags(state: &mut ModState, flags: u64) {
 
 const CG_EVENT_TYPE_KEY_DOWN: u32 = 10;
 const CG_EVENT_TYPE_KEY_UP: u32 = 11;
+const CG_EVENT_TYPE_FLAGS_CHANGED: u32 = 12;
 
 extern "C" fn raw_callback(
     _proxy: *mut c_void,
@@ -192,7 +193,22 @@ extern "C" fn raw_callback(
         let mut state_guard = ctx.state.lock();
         let was_fired = state_guard.fired;
         let prev_state = *state_guard;
-        apply_flags(&mut state_guard, flags);
+        // Only trust `flags` from flagsChanged events.
+        //
+        // **Why this gate matters.** macOS sets `kCGEventFlagMaskSecondaryFn`
+        // in the event flags for every keyDown/keyUp of the "function row"
+        // and its compatriots — arrow keys, F-keys, Page Up/Down, Home/End,
+        // and a few more. The Fn flag isn't actually "set" by the user; it's
+        // an OS-level annotation that the key being pressed lives on that
+        // row. Updating our `fn_key` state from those events made arrow-key
+        // presses spuriously satisfy the Fn hotkey: start chime would fire,
+        // recorder would spin up, then the keyUp would tear it down — all
+        // for a 50 ms arrow tap. The actual modifier keys (Fn, Cmd, Shift,
+        // Control, Option) only emit flagsChanged events on press/release,
+        // so we lose nothing by ignoring flags on keyDown/keyUp.
+        if event_type == CG_EVENT_TYPE_FLAGS_CHANGED {
+            apply_flags(&mut state_guard, flags);
+        }
         if state_guard.fn_key != prev_state.fn_key
             || state_guard.cmd != prev_state.cmd
             || state_guard.option_left != prev_state.option_left

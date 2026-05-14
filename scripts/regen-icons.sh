@@ -39,20 +39,13 @@ SVG_FILE="$(mktemp -t dicto-logo).svg"
 PNG_FILE="$(mktemp -t dicto-logo).png"
 trap 'rm -f "$SVG_FILE" "$PNG_FILE"' EXIT
 
-# Keep these stops in sync with src/components/Logo.tsx.
+# Keep this SVG in sync with src/components/Logo.tsx.
 cat > "$SVG_FILE" <<'SVG'
 <svg width="1024" height="1024" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#A7C7E7"/>
-      <stop offset="50%" stop-color="#B5ACE5"/>
-      <stop offset="100%" stop-color="#F2C6D1"/>
-    </linearGradient>
-  </defs>
-  <rect x="0" y="0" width="100" height="100" rx="22" ry="22" fill="url(#g)"/>
-  <rect x="32" y="35" width="8" height="30" rx="4" fill="#ffffff"/>
-  <rect x="46" y="22" width="8" height="56" rx="4" fill="#ffffff"/>
-  <rect x="60" y="30" width="8" height="40" rx="4" fill="#ffffff"/>
+  <rect x="0" y="0" width="100" height="100" rx="22" ry="22" fill="#1F1B18"/>
+  <rect x="32" y="35" width="8" height="30" rx="4" fill="#FAF6EF"/>
+  <rect x="46" y="22" width="8" height="56" rx="4" fill="#D4894A"/>
+  <rect x="60" y="30" width="8" height="40" rx="4" fill="#FAF6EF"/>
 </svg>
 SVG
 
