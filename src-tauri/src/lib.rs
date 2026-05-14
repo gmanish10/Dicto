@@ -42,6 +42,14 @@ pub fn run() {
             menubar::install(&handle, app_state.clone())?;
             pipeline::spawn_coordinator(handle.clone(), app_state.clone());
 
+            // If the bundled LLM model is already on disk from a previous
+            // session, populate the polish resolver now so Auto can route
+            // to it immediately. Cheap — just an exists() check.
+            if let Some(p) = polish::try_construct_bundled_llm(&handle) {
+                app_state.polish_ctx.write().set_bundled_llm(Some(p));
+                tracing::info!("bundled LLM model detected; resolver will route to it");
+            }
+
             // Always show the main window on launch — easier to find than hunting
             // for the tray icon. Subsequent shows happen via tray clicks.
             if let Some(window) = handle.get_webview_window("main") {
@@ -74,6 +82,8 @@ pub fn run() {
             commands::resume_dictation,
             commands::recheck_for_updates,
             commands::install_pending_update,
+            commands::check_polish_availability,
+            commands::start_polish_model_download,
             commands::reinject_transcript,
             commands::record_correction,
             commands::open_main_window,

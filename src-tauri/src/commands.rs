@@ -7,7 +7,7 @@ use crate::{
     state::SharedState,
 };
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, SharedState>) -> Settings {
@@ -244,6 +244,106 @@ pub fn open_main_window(app: AppHandle) -> Result<(), String> {
 pub fn finish_onboarding(state: State<'_, SharedState>) -> Result<(), String> {
     state.config.write().onboarding_completed = true;
     state.save_settings().map_err(|e| e.to_string())
+}
+
+// -- Bundled LLM model availability + download ----------------------------
+
+use crate::polish::bundled_llm::manifest as bundled_llm_manifest;
+
+/// Front-end-facing snapshot of polish-tier availability. Today only the
+/// bundled-LLM has interesting state (downloaded? downloading?). Apple
+/// Intelligence will join this struct when it lands ([#5]).
+#[derive(Serialize)]
+pub struct PolishAvailability {
+    pub bundled_llm: BundledLlmStatus,
+}
+
+#[derive(Serialize)]
+pub struct BundledLlmStatus {
+    /// True when the GGUF file is on disk.
+    pub downloaded: bool,
+    /// Approximate download size for the UI ("Download 940 MB model").
+    pub size_mb: u32,
+    /// `Some` while a download is in flight, `None` otherwise.
+    pub downloading: Option<DownloadProgress>,
+}
+
+#[derive(Serialize, Clone, Copy)]
+pub struct DownloadProgress {
+    pub bytes: u64,
+    /// Total bytes; 0 if server didn't send Content-Length.
+    pub total: u64,
+}
+
+#[tauri::command]
+pub fn check_polish_availability(
+    state: State<'_, SharedState>,
+    app: AppHandle,
+) -> PolishAvailability {
+    let downloaded = crate::model::resolve_file(&app, bundled_llm_manifest::QWEN_FILENAME).is_ok();
+    let downloading = *state.polish_model_download.read();
+    PolishAvailability {
+        bundled_llm: BundledLlmStatus {
+            downloaded,
+            size_mb: bundled_llm_manifest::QWEN_SIZE_MB,
+            downloading,
+        },
+    }
+}
+
+#[tauri::command]
+pub async fn start_polish_model_download(
+    state: State<'_, SharedState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    // Refuse if a download is already in flight.
+    {
+        let guard = state.polish_model_download.read();
+        if guard.is_some() {
+            return Err("a download is already running".into());
+        }
+    }
+    *state.polish_model_download.write() = Some(DownloadProgress { bytes: 0, total: 0 });
+
+    let app_for_progress = app.clone();
+    let state_for_progress = state.inner().clone();
+    let progress = move |bytes: u64, total: u64| {
+        let p = DownloadProgress { bytes, total };
+        *state_for_progress.polish_model_download.write() = Some(p);
+        let _ = app_for_progress.emit("polish-model:download-progress", p);
+    };
+
+    let result = crate::model::download_file(
+        &app,
+        bundled_llm_manifest::QWEN_URL,
+        bundled_llm_manifest::QWEN_FILENAME,
+        if bundled_llm_manifest::QWEN_SHA256.is_empty() {
+            None
+        } else {
+            Some(bundled_llm_manifest::QWEN_SHA256)
+        },
+        progress,
+    )
+    .await;
+
+    *state.polish_model_download.write() = None;
+
+    match result {
+        Ok(_) => {
+            // Populate the resolver so subsequent polish calls route through
+            // the new model without an app restart.
+            if let Some(p) = crate::polish::try_construct_bundled_llm(&app) {
+                state.polish_ctx.write().set_bundled_llm(Some(p));
+            }
+            let _ = app.emit("polish-model:download-complete", ());
+            Ok(())
+        }
+        Err(e) => {
+            let msg = format!("download failed: {e}");
+            let _ = app.emit("polish-model:download-failed", msg.clone());
+            Err(msg)
+        }
+    }
 }
 
 // Trait import for the inject command above.

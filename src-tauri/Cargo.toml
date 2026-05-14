@@ -43,6 +43,11 @@ rdev = "0.5"
 # Whisper (local STT)
 whisper-rs = { version = "0.13", features = ["coreml", "metal"] }
 
+# Bundled local LLM polish (Qwen 2.5 1.5B via llama.cpp; Metal-accelerated
+# on Apple Silicon). Pinned exact since the crate is pre-1.0; re-test on
+# every Cargo.lock bump.
+llama-cpp-2 = { version = "=0.1.146", features = ["metal"], default-features = false }
+
 # Text injection (clipboard write + raw CGEvent for Cmd+V; no enigo to avoid
 # enigo's main-thread-only TSM calls that crash on tokio workers).
 arboard = "3.4"

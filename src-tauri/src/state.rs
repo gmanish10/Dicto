@@ -22,6 +22,11 @@ pub struct AppState {
     /// Cached polish provider clients (Apple Intelligence sidecar, bundled
     /// LLM context). The resolver reads from this on every utterance.
     pub polish_ctx: RwLock<PolishContext>,
+    /// In-flight bundled-LLM download. `Some` while downloading so the
+    /// Settings UI can show progress + start_polish_model_download can
+    /// refuse concurrent downloads. Written by the download task,
+    /// snapshotted by `check_polish_availability`.
+    pub polish_model_download: RwLock<Option<crate::commands::DownloadProgress>>,
     /// rdev producer side (set by hotkey::listener when it starts).
     pub hotkey_tx: Sender<HotkeyEvent>,
     pub hotkey_rx: Receiver<HotkeyEvent>,
@@ -45,6 +50,7 @@ impl AppState {
             pipeline_state: RwLock::new(PipelineState::Idle),
             history,
             polish_ctx: RwLock::new(PolishContext::empty()),
+            polish_model_download: RwLock::new(None),
             hotkey_tx: tx,
             hotkey_rx: rx,
         })

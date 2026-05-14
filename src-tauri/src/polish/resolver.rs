@@ -17,13 +17,18 @@
 use std::sync::Arc;
 
 use super::{
-    claude::ClaudePolisher, groq_llama::GroqLlamaPolisher, local_lite::LocalLitePolisher,
-    noop::NoOpPolisher, Polisher,
+    bundled_llm::{manifest as bundled_llm_manifest, BundledLlmPolisher},
+    claude::ClaudePolisher,
+    groq_llama::GroqLlamaPolisher,
+    local_lite::LocalLitePolisher,
+    noop::NoOpPolisher,
+    Polisher,
 };
 use crate::{
     config::PolishProvider,
     keychain::{self, ApiKey},
 };
+use tauri::AppHandle;
 
 /// Cached, expensive-to-build polish client handles. Populated at startup
 /// (or lazily on first need) and shared across utterances.
@@ -40,6 +45,22 @@ impl PolishContext {
     pub fn empty() -> Self {
         Self::default()
     }
+
+    /// Set / clear the bundled-LLM client. Called at startup when the
+    /// model file already exists on disk, and after a successful download.
+    pub fn set_bundled_llm(&mut self, polisher: Option<Arc<dyn Polisher>>) {
+        self.bundled_llm = polisher;
+    }
+}
+
+/// Check whether the bundled-LLM model exists on disk; if so, construct
+/// a Polisher for it and return it. Returns None if the file is missing.
+///
+/// Cheap: just an `exists()` check + a few struct allocations. Safe to
+/// call at startup and after download completes.
+pub fn try_construct_bundled_llm(app: &AppHandle) -> Option<Arc<dyn Polisher>> {
+    let path = crate::model::resolve_file(app, bundled_llm_manifest::QWEN_FILENAME).ok()?;
+    Some(Arc::new(BundledLlmPolisher::new(path)))
 }
 
 /// Result of resolution: the actual `Polisher` to run, plus the *effective*

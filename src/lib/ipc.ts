@@ -75,6 +75,21 @@ export interface ApiKeyStatus {
   configured: boolean;
 }
 
+export interface DownloadProgress {
+  bytes: number;
+  total: number;
+}
+
+export interface BundledLlmStatus {
+  downloaded: boolean;
+  size_mb: number;
+  downloading: DownloadProgress | null;
+}
+
+export interface PolishAvailability {
+  bundled_llm: BundledLlmStatus;
+}
+
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   setSettings: (settings: Settings) => invoke<void>("set_settings", { settings }),
@@ -101,6 +116,8 @@ export const api = {
   resumeDictation: () => invoke<void>("resume_dictation"),
   recheckForUpdates: () => invoke<string | null>("recheck_for_updates"),
   installPendingUpdate: () => invoke<void>("install_pending_update"),
+  checkPolishAvailability: () => invoke<PolishAvailability>("check_polish_availability"),
+  startPolishModelDownload: () => invoke<void>("start_polish_model_download"),
   reinjectTranscript: (id: number) => invoke<void>("reinject_transcript", { id }),
   recordCorrection: (raw: string, finalText: string) =>
     invoke<void>("record_correction", { raw, finalText }),

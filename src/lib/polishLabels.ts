@@ -48,11 +48,11 @@ export const POLISH_META: Record<PolishProvider, ProviderMeta> = {
   // still exists in Rust + TypeScript for forward compatibility.
   bundled_llm: {
     label: "On-device cleanup model",
-    sublabel: "free, 940 MB download — coming soon",
+    sublabel: "free, 940 MB one-time download",
     description:
-      "Same quality benefits as Apple Intelligence, on any Mac. A small language model that runs entirely on your computer.",
-    privacy: "Stays on your Mac.",
-    speed: "Half a second to a couple of seconds.",
+      "Smart cleanup using Qwen 2.5, a small language model that runs entirely on your computer. Removes filler words, fixes punctuation, breaks long speech into sentences, and formats lists as bullet points when appropriate.",
+    privacy: "Stays on your Mac. Nothing sent to any server.",
+    speed: "Half a second to two seconds depending on the transcript length.",
   },
   local_lite: {
     label: "Basic cleanup",
@@ -110,13 +110,13 @@ export const PROVIDER_ORDER: PolishProvider[] = [
 
 /**
  * Subset of providers shown in the Settings dropdown right now.
- * `bundled_llm` is hidden until the engine ships in a follow-up.
- * `apple_intelligence` is hidden until the Swift sidecar ships.
+ * `apple_intelligence` is hidden until the Swift sidecar ships (#5).
  *
  * Update this list as features land; the rest of the metadata is ready.
  */
 export const VISIBLE_PROVIDERS: PolishProvider[] = [
   "auto",
+  "bundled_llm",
   "local_lite",
   "claude",
   "groq_llama",

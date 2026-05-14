@@ -1,3 +1,4 @@
+pub mod bundled_llm;
 pub mod claude;
 pub mod groq_llama;
 pub mod local_lite;
@@ -6,7 +7,7 @@ pub mod prompt;
 pub mod resolver;
 
 pub use prompt::{build_few_shot_block, build_full_system, SYSTEM_PROMPT};
-pub use resolver::{resolve, PolishContext};
+pub use resolver::{resolve, try_construct_bundled_llm, PolishContext};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
