@@ -123,5 +123,3 @@ v1 ships English only. Planned:
 ## License
 
 [MIT](LICENSE).
-
-Inspired by [Wispr Flow](https://wisprflow.ai/), [Handy](https://github.com/cjpais/Handy), [VoiceInk](https://github.com/Beingpax/VoiceInk), and [OpenQuack](https://github.com/larryxiao/openquack).
