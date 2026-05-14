@@ -38,9 +38,12 @@ src-tauri/resources/models/*.mlmodelc/
 src-tauri/resources/models/*.mlpackage/
 /models/
 
-# Tauri sidecars — rebuilt per-host via scripts/build-apple-polish.sh.
-# Bundled into the .dmg/.app at release time; not source-controlled.
-src-tauri/binaries/dicto-apple-polish-*
+# Tauri sidecars — the Apple Intelligence sidecar binary is checked
+# in at the release tag because GitHub Actions macOS runners don't ship
+# the macOS 26 SDK yet (FoundationModels is macOS-26-only). Maintainer
+# rebuilds via `scripts/build-apple-polish.sh` on macOS 26 before
+# tagging. Local dev rebuilds will show as modified — only commit them
+# at release time. (intentionally not gitignored)
 
 # Env
 .env

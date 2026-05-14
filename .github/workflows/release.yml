@@ -49,6 +49,23 @@ jobs:
       - name: Download whisper model
         run: ./scripts/fetch-model.sh ggml-small.en
 
+      # The Apple Intelligence sidecar (`dicto-apple-polish`) is checked
+      # in at each release tag because GitHub Actions macOS runners
+      # don't ship the macOS 26 SDK yet (FoundationModels is
+      # macOS-26-only). Sanity-check it's present before handing off to
+      # tauri build, which would otherwise fail with a confusing
+      # "externalBin not found" error.
+      - name: Verify Apple Intelligence sidecar present
+        run: |
+          set -e
+          BIN="src-tauri/binaries/dicto-apple-polish-${{ matrix.target }}"
+          if [[ ! -x "$BIN" ]]; then
+            echo "ERROR: $BIN missing or not executable."
+            echo "Maintainer: run scripts/build-apple-polish.sh on macOS 26 and commit before tagging."
+            exit 1
+          fi
+          file "$BIN"
+
       - name: Build app
         uses: tauri-apps/tauri-action@v0
         env:
