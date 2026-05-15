@@ -209,15 +209,33 @@ pub async fn install_pending_update(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn reinject_transcript(state: State<'_, SharedState>, id: i64) -> Result<(), String> {
+    reinject_transcript_with(
+        state.inner(),
+        id,
+        |text| crate::inject::paste::ClipboardPasteInjector.inject(text),
+        crate::inject::paste::copy_to_clipboard,
+    )
+}
+
+fn reinject_transcript_with(
+    state: &SharedState,
+    id: i64,
+    paste: impl FnOnce(&str) -> Result<(), crate::inject::InjectError>,
+    copy: impl FnOnce(&str) -> Result<(), crate::inject::InjectError>,
+) -> Result<(), String> {
     let row = state
         .history
         .get_transcript(id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "transcript not found".to_string())?;
     let injectable = crate::inject::format_for_injection(&row.polished);
-    crate::inject::paste::ClipboardPasteInjector
-        .inject(&injectable)
-        .map_err(|e| e.to_string())
+    let auto_paste = state.config.read().auto_paste;
+    if auto_paste {
+        paste(&injectable)
+    } else {
+        copy(&injectable)
+    }
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -386,3 +404,102 @@ pub async fn start_polish_model_download(
 
 // Trait import for the inject command above.
 use crate::inject::Injector;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        history::HistoryStore,
+        polish::PolishContext,
+        state::{AppState, PipelineState},
+    };
+    use crossbeam_channel::unbounded;
+    use parking_lot::RwLock;
+    use std::sync::{atomic::AtomicBool, Arc};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn test_state(auto_paste: bool) -> SharedState {
+        let mut app_data_dir = std::env::temp_dir();
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before UNIX_EPOCH")
+            .as_nanos();
+        app_data_dir.push(format!(
+            "dicto-reinject-test-{}-{unique}",
+            std::process::id()
+        ));
+
+        let mut settings = Settings::with_defaults();
+        settings.auto_paste = auto_paste;
+        let history = HistoryStore::open(&app_data_dir.join("dicto.db")).unwrap();
+        let (hotkey_tx, hotkey_rx) = unbounded();
+
+        Arc::new(AppState {
+            app_data_dir,
+            config: RwLock::new(settings),
+            pipeline_state: RwLock::new(PipelineState::Idle),
+            history,
+            polish_ctx: RwLock::new(PolishContext::empty()),
+            polish_model_download: RwLock::new(None),
+            hotkey_tx,
+            hotkey_rx,
+            runtime_started: AtomicBool::new(false),
+        })
+    }
+
+    #[test]
+    fn reinject_transcript_copies_without_pasting_when_auto_paste_is_disabled() {
+        let state = test_state(false);
+        let id = state
+            .history
+            .insert_transcript("raw", "Private note.", 1200, "test", Some("test"))
+            .unwrap();
+        let mut pasted = Vec::new();
+        let mut copied = Vec::new();
+
+        reinject_transcript_with(
+            &state,
+            id,
+            |text| {
+                pasted.push(text.to_string());
+                Ok(())
+            },
+            |text| {
+                copied.push(text.to_string());
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert!(pasted.is_empty());
+        assert_eq!(copied, vec!["Private note. ".to_string()]);
+    }
+
+    #[test]
+    fn reinject_transcript_pastes_when_auto_paste_is_enabled() {
+        let state = test_state(true);
+        let id = state
+            .history
+            .insert_transcript("raw", "Paste me.", 1200, "test", Some("test"))
+            .unwrap();
+        let mut pasted = Vec::new();
+        let mut copied = Vec::new();
+
+        reinject_transcript_with(
+            &state,
+            id,
+            |text| {
+                pasted.push(text.to_string());
+                Ok(())
+            },
+            |text| {
+                copied.push(text.to_string());
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(pasted, vec!["Paste me. ".to_string()]);
+        assert!(copied.is_empty());
+    }
+}
