@@ -170,6 +170,29 @@ fn apply_flags(state: &mut ModState, flags: u64) {
     }
 }
 
+/// Release-only flag reconcile for the HID poll. Clears a modifier when
+/// `CGEventSourceFlagsState` says it is no longer held, but NEVER sets
+/// one.
+///
+/// **Why release-only.** The HID flag state reports
+/// `kCGEventFlagMaskSecondaryFn` for as long as a "function row" key —
+/// arrow keys, F-keys, Page Up/Down, Home/End — is physically held down.
+/// Trusting the poll to *engage* `fn_key` therefore let a long arrow-key
+/// press silently satisfy the Fn hotkey, start the recorder, and paste a
+/// garbage transcript on release. Chord engagement happens exclusively
+/// through real `flagsChanged` events in the tap callback; the poll's
+/// only job is to catch a *missed release*, so it must never set a bit.
+fn reconcile_release(state: &mut ModState, flags: u64) {
+    let mut fresh = ModState::default();
+    apply_flags(&mut fresh, flags);
+    state.cmd &= fresh.cmd;
+    state.shift &= fresh.shift;
+    state.control &= fresh.control;
+    state.fn_key &= fresh.fn_key;
+    state.option_left &= fresh.option_left;
+    state.option_right &= fresh.option_right;
+}
+
 const CG_EVENT_TYPE_KEY_DOWN: u32 = 10;
 const CG_EVENT_TYPE_KEY_UP: u32 = 11;
 const CG_EVENT_TYPE_FLAGS_CHANGED: u32 = 12;
@@ -424,7 +447,9 @@ fn spawn_modifier_poll(
             let mut state_guard = state.lock();
             let was_fired = state_guard.fired;
             let prev = *state_guard;
-            apply_flags(&mut state_guard, flags);
+            // Release-only: the poll catches a missed modifier *release*.
+            // It must never engage a modifier — see `reconcile_release`.
+            reconcile_release(&mut state_guard, flags);
 
             // No-op fast path: state didn't drift.
             if state_guard.fn_key == prev.fn_key

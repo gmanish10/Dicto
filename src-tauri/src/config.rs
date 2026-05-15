@@ -68,10 +68,6 @@ pub struct Settings {
     /// Cleared by `finish_onboarding` and on leaving the Permissions step.
     pub onboarding_step: String,
     pub paused: bool,
-    /// Show the floating "Recording" pill above all apps while the
-    /// hotkey is held. Defaults on — visible feedback that Dicto is
-    /// listening is the right default for a hold-to-talk app.
-    pub show_recording_overlay: bool,
 }
 
 impl Settings {
@@ -89,7 +85,6 @@ impl Settings {
             max_recording_seconds: 300,
             onboarding_completed: false,
             paused: false,
-            show_recording_overlay: true,
             onboarding_step: String::new(),
         }
     }
@@ -189,11 +184,6 @@ fn merge_into_defaults(value: serde_json::Value) -> Settings {
         &mut settings.onboarding_completed,
     );
     pick(&map, "paused", &mut settings.paused);
-    pick(
-        &map,
-        "show_recording_overlay",
-        &mut settings.show_recording_overlay,
-    );
     pick(&map, "onboarding_step", &mut settings.onboarding_step);
 
     settings

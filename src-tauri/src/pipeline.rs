@@ -218,9 +218,8 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
                     match ack {
                         Ok(Ok(Ok(()))) => {
                             recording_started_at = Some(Instant::now());
-                            // Snapshot the frontmost app NOW, before our
-                            // own UI (overlay window) appears and before
-                            // the user has any reason to switch contexts.
+                            // Snapshot the frontmost app NOW, before the
+                            // user has any reason to switch contexts.
                             paste_target = crate::inject::target::capture_frontmost();
                             if let Some(t) = paste_target {
                                 tracing::debug!(pid = t.pid(), "captured paste target");

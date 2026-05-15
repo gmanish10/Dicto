@@ -620,7 +620,7 @@ function keyConfigured(keys: ApiKeyStatus[], which: ApiKey): boolean {
 
 const SAMPLE_PROMPTS = [
   "Hey, um, just a reminder to pick up groceries on the way home.",
-  "Let's meet at 3 PM tomorrow to discuss the quarterly numbers.",
+  "Let's meet at 3 PM, um no, 4 PM tomorrow to discuss the quarterly numbers.",
   "Email John back about the project — tell him I need the spec by Friday.",
 ];
 

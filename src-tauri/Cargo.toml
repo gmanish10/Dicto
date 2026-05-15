@@ -1,6 +1,6 @@
 [package]
 name = "dicto"
-version = "0.3.2"
+version = "0.3.3"
 description = "A free, open-source push-to-talk dictation app for macOS"
 authors = ["Dicto contributors"]
 edition = "2021"
@@ -19,7 +19,7 @@ tauri-build = { version = "2.6", features = [] }
 # so a fresh `cargo build` can't silently pull a newer minor than what
 # CI validated. Upgrade JS + Rust together and re-test the full release
 # pipeline (model bundling, updater signature, sidecar handshake).
-tauri = { version = "2.11", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri = { version = "2.11", features = ["tray-icon", "image-png"] }
 tauri-plugin-shell = "2.3"
 tauri-plugin-notification = "2.3"
 tauri-plugin-dialog = "2.7"

@@ -111,25 +111,6 @@ export default function Settings() {
                 <input
                   type="checkbox"
                   className="mt-0.5"
-                  checked={settings.show_recording_overlay}
-                  onChange={(e) =>
-                    update({ show_recording_overlay: e.target.checked })
-                  }
-                />
-                <span>
-                  Show recording indicator
-                  <span className="ml-2 text-xs text-ink-400">
-                    A small pill at the top of the screen while you're holding the hotkey, so you always know Dicto is listening. Note: macOS hides floating windows over native-fullscreen apps; the start/stop chime still plays.
-                  </span>
-                </span>
-              </label>
-            </div>
-
-            <div className="card">
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
                   checked={settings.auto_paste}
                   onChange={(e) => update({ auto_paste: e.target.checked })}
                 />
@@ -360,12 +341,17 @@ function SectionNav() {
       <ul className="space-y-0.5 text-sm">
         {SECTIONS.map((s) => (
           <li key={s.id}>
-            <a
-              href={`#${s.id}`}
-              className="block rounded-md px-3 py-1.5 text-ink-700 hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-ink-700"
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById(s.id)
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+              className="block w-full rounded-md px-3 py-1.5 text-left text-ink-700 hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-ink-700"
             >
               {s.label}
-            </a>
+            </button>
           </li>
         ))}
       </ul>

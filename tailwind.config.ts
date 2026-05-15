@@ -10,12 +10,12 @@ export default {
         // a dictation app the user keeps open all day reads better
         // with a calmer neutral substrate + a single warm accent.
         //
-        // Ink scale is now slightly warm-shifted (a touch of brown
-        // in the grays) so it harmonizes with the amber accent and
-        // the cream backgrounds. Pure cool grays clashed with the
-        // amber and made the UI feel uncoordinated.
+        // Ink scale is slightly warm-shifted (a touch of brown in the
+        // grays) so it harmonizes with the amber accent. Pure cool
+        // grays clashed with the amber and made the UI feel
+        // uncoordinated.
         ink: {
-          50: "#FAF6EF", // cream — main app bg (light mode)
+          50: "#E8F4E1", // light pastel green — main app bg (light mode)
           100: "#F1ECE3",
           200: "#E5DDD0",
           300: "#C7BBA8",

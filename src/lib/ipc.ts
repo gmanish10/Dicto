@@ -27,7 +27,6 @@ export interface Settings {
   max_recording_seconds: number;
   onboarding_completed: boolean;
   paused: boolean;
-  show_recording_overlay: boolean;
   /** Armed onboarding resume marker. Empty normally; set to "permissions"
    *  only when the user initiates an Accessibility / Input-Monitoring
    *  grant, so the macOS-forced relaunch resumes onto Permissions. Any

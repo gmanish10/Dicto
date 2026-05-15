@@ -6,16 +6,42 @@ All notable changes to Dicto are documented here. Format follows
 
 ## [Unreleased]
 
-### Fixed
-- **Onboarding no longer resumes mid-flow on a normal launch.** It now
-  resumes onto the Permissions step *only* after the macOS-forced
-  quit+relaunch that a permission grant triggers; fresh installs, normal
-  quits, and reinstalls all start at Welcome.
+## [0.3.3] - 2026-05-15
+
+Patch release: removes the recording pill, fixes onboarding / Settings /
+hotkey bugs, refreshes Apple Intelligence cleanup, and recolors the app.
+
+### Install
+
+**👉 [Download Dicto_0.3.3_aarch64.dmg](https://github.com/gmanish10/Dicto/releases/download/v0.3.3/Dicto_0.3.3_aarch64.dmg)**
+
+Apple Silicon (M-series) only. Existing v0.1.2+ users get this via the built-in
+updater (About → Install and restart). First-time install: drag to `/Applications`,
+then `xattr -d com.apple.quarantine /Applications/Dicto.app` once.
+
+### Removed
+- **The floating recording pill is gone.** The on-screen "Listening"
+  indicator has been removed. The menubar icon still reflects recording
+  state and the start/stop chimes still play.
 
 ### Changed
 - **Apple Intelligence cleanup applies light fluency fixes.** It now
   corrects clear grammar mistakes and smooths awkward or run-on phrasing,
   while still preserving your meaning, tone, and wording.
+- **New background color.** The app background is now a light pastel
+  green, replacing the warm cream.
+
+### Fixed
+- **Onboarding no longer resumes mid-flow on a normal launch.** It now
+  resumes onto the Permissions step *only* after the macOS-forced
+  quit+relaunch that a permission grant triggers; fresh installs, normal
+  quits, and reinstalls all start at Welcome.
+- **Clicking a section in the Settings sidebar no longer blanks the app.**
+  The in-page jump links now scroll to the section instead of breaking
+  the router.
+- **Long-pressing an arrow key no longer starts dictation.** Arrow keys,
+  F-keys, and Page Up/Down/Home/End carry an OS-level Fn annotation; a
+  long press could spuriously satisfy the Fn hotkey. Fixed.
 
 ## [0.3.2] - 2026-05-15
 
