@@ -423,14 +423,14 @@ function PermissionsStep({
           description="So the global shortcut works while another app is focused. Click Open System Settings, enable Dicto, then come back here."
           status={perms.input_monitoring}
           pane="input_monitoring"
-          onBeforeOpenSettings={() => void onArmResume()}
+          onBeforeOpenSettings={onArmResume}
         />
         <PermissionRow
           label="Accessibility"
           description="So Dicto can paste cleaned-up text into whatever app you're typing in."
           status={perms.accessibility}
           pane="accessibility"
-          onBeforeOpenSettings={() => void onArmResume()}
+          onBeforeOpenSettings={onArmResume}
         />
       </div>
       <div className="flex items-center justify-between pt-2">

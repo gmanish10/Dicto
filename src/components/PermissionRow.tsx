@@ -17,7 +17,7 @@ interface Props {
    * and Input-Monitoring rows, since granting those forces a macOS
    * quit+relaunch.
    */
-  onBeforeOpenSettings?: () => void;
+  onBeforeOpenSettings?: () => Promise<void> | void;
 }
 
 /**
@@ -74,7 +74,7 @@ export function PermissionRow({
               if (onRequest) {
                 await onRequest();
               } else {
-                onBeforeOpenSettings?.();
+                await onBeforeOpenSettings?.();
                 await api.openSystemSettings(pane);
               }
             }}
