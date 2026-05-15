@@ -22,12 +22,14 @@ interface Props {
  *   pane since macOS doesn't ship a programmatic grant API for those.
  * - **Granted**: clean status pill + a small "Change in System Settings"
  *   link so the user can revoke later without leaving Dicto.
- * - **Denied**: same as not-granted but with the muted-red pill, so the
- *   user can re-open System Settings to flip it.
+ * - **Denied**: muted-red pill + System Settings deep-link. macOS only
+ *   shows the microphone prompt once, so retrying it after denial would
+ *   leave the user stuck.
  */
 export function PermissionRow({ label, description, status, pane, onRequest }: Props) {
   const isGranted = status === "granted";
   const isDenied = status === "denied";
+  const buttonLabel = isDenied ? "Open System Settings" : "Allow";
 
   return (
     <div className="card flex items-start justify-between gap-4">
@@ -57,14 +59,14 @@ export function PermissionRow({ label, description, status, pane, onRequest }: P
             type="button"
             className="btn-primary text-xs"
             onClick={async () => {
-              if (onRequest) {
+              if (onRequest && !isDenied) {
                 await onRequest();
               } else {
                 await api.openSystemSettings(pane);
               }
             }}
           >
-            Allow
+            {buttonLabel}
           </button>
         )}
       </div>
