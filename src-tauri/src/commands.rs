@@ -259,12 +259,12 @@ pub fn start_runtime(app: AppHandle, state: State<'_, SharedState>) -> Result<()
 
 #[tauri::command]
 pub fn finish_onboarding(app: AppHandle, state: State<'_, SharedState>) -> Result<(), String> {
-    state.config.write().onboarding_completed = true;
-    state.save_settings().map_err(|e| e.to_string())?;
     // Chain the runtime spawn so the React side only has to round-trip
     // once: marking onboarding done implies "I've granted everything,
     // please start the dictation pipeline now."
     crate::pipeline::spawn_coordinator(app, state.inner().clone())?;
+    state.config.write().onboarding_completed = true;
+    state.save_settings().map_err(|e| e.to_string())?;
     Ok(())
 }
 
