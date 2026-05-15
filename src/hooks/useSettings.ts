@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, Settings } from "../lib/ipc";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -18,6 +18,13 @@ export function useSettings() {
 
   useEffect(() => {
     void reload();
+  }, [reload]);
+
+  useEffect(() => {
+    const unlisten = listen("settings:updated", () => void reload());
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
   }, [reload]);
 
   const update = useCallback(async (patch: Partial<Settings>) => {

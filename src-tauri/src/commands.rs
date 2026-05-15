@@ -161,15 +161,21 @@ pub fn set_hotkey(state: State<'_, SharedState>, chord: String) -> Result<(), St
 }
 
 #[tauri::command]
-pub fn pause_dictation(state: State<'_, SharedState>) -> Result<(), String> {
-    state.config.write().paused = true;
-    state.save_settings().map_err(|e| e.to_string())
+pub fn pause_dictation(app: AppHandle, state: State<'_, SharedState>) -> Result<(), String> {
+    set_paused(&app, state.inner(), true)
 }
 
 #[tauri::command]
-pub fn resume_dictation(state: State<'_, SharedState>) -> Result<(), String> {
-    state.config.write().paused = false;
-    state.save_settings().map_err(|e| e.to_string())
+pub fn resume_dictation(app: AppHandle, state: State<'_, SharedState>) -> Result<(), String> {
+    set_paused(&app, state.inner(), false)
+}
+
+fn set_paused(app: &AppHandle, state: &SharedState, paused: bool) -> Result<(), String> {
+    state.config.write().paused = paused;
+    let save_result = state.save_settings().map_err(|e| e.to_string());
+    crate::menubar::refresh_pause_ui(app, state);
+    let _ = app.emit("settings:updated", ());
+    save_result
 }
 
 /// Check whether an update is available. Returns the new version string
