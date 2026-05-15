@@ -6,26 +6,38 @@ interface Props {
   status: PermissionStatus;
   pane: "microphone" | "accessibility" | "input_monitoring";
   /**
-   * Only set for the microphone row — macOS exposes a programmatic
-   * prompt API for mic but not for accessibility or input monitoring,
-   * so those rows fall back to the System Settings deep-link.
+   * Fires the first-time macOS prompt. Once a permission is denied,
+   * macOS will not show that prompt again, so denied rows always
+   * deep-link to System Settings instead.
    */
   onRequest?: () => Promise<void> | void;
+  /**
+   * Fired right before a denied row opens System Settings. Onboarding
+   * uses this to persist the Permissions-step resume marker because
+   * granting Accessibility or Input Monitoring can relaunch the app.
+   */
+  onBeforeOpenSettings?: () => Promise<void> | void;
 }
 
 /**
  * Per-permission card.
  *
- * - **Not granted**: prominent "Allow" button. For mic, calling the
- *   button triggers the macOS prompt inline. For accessibility +
- *   input monitoring, it deep-links to the relevant System Settings
- *   pane since macOS doesn't ship a programmatic grant API for those.
+ * - **Not granted**: prominent "Allow" button. When an inline prompt
+ *   callback exists, call it; otherwise deep-link to System Settings.
  * - **Granted**: clean status pill + a small "Change in System Settings"
  *   link so the user can revoke later without leaving Dicto.
  * - **Denied**: same as not-granted but with the muted-red pill, so the
- *   user can re-open System Settings to flip it.
+ *   user can re-open System Settings to flip it. Denied rows never call
+ *   one-shot request APIs because macOS will not re-prompt.
  */
-export function PermissionRow({ label, description, status, pane, onRequest }: Props) {
+export function PermissionRow({
+  label,
+  description,
+  status,
+  pane,
+  onRequest,
+  onBeforeOpenSettings,
+}: Props) {
   const isGranted = status === "granted";
   const isDenied = status === "denied";
 
@@ -57,7 +69,10 @@ export function PermissionRow({ label, description, status, pane, onRequest }: P
             type="button"
             className="btn-primary text-xs"
             onClick={async () => {
-              if (onRequest) {
+              if (isDenied) {
+                await onBeforeOpenSettings?.();
+                await api.openSystemSettings(pane);
+              } else if (onRequest) {
                 await onRequest();
               } else {
                 await api.openSystemSettings(pane);

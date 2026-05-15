@@ -266,6 +266,7 @@ export default function Onboarding() {
               await api.requestAccessibilityPermission();
               await refreshPerms();
             }}
+            onBeforePermissionSettings={armResume}
             onBack={() => setStepId("welcome")}
             onNext={onPermissionsContinue}
           />
@@ -392,6 +393,7 @@ function PermissionsStep({
   onRequestMic,
   onRequestInputMonitoring,
   onRequestAccessibility,
+  onBeforePermissionSettings,
   onBack,
   onNext,
 }: {
@@ -400,6 +402,7 @@ function PermissionsStep({
   onRequestMic: () => Promise<void>;
   onRequestInputMonitoring: () => Promise<void>;
   onRequestAccessibility: () => Promise<void>;
+  onBeforePermissionSettings: () => Promise<void>;
   onBack: () => void;
   onNext: () => void | Promise<void>;
 }) {
@@ -425,6 +428,7 @@ function PermissionsStep({
           status={perms.input_monitoring}
           pane="input_monitoring"
           onRequest={onRequestInputMonitoring}
+          onBeforeOpenSettings={onBeforePermissionSettings}
         />
         <PermissionRow
           label="Accessibility"
@@ -432,6 +436,7 @@ function PermissionsStep({
           status={perms.accessibility}
           pane="accessibility"
           onRequest={onRequestAccessibility}
+          onBeforeOpenSettings={onBeforePermissionSettings}
         />
       </div>
       <div className="flex items-center justify-between pt-2">
