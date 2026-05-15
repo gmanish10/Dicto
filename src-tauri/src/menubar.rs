@@ -135,13 +135,8 @@ fn handle_menu_event(app: &AppHandle, state: &SharedState, id: &str) {
             cfg.paused = !cfg.paused;
             drop(cfg);
             let _ = state.save_settings();
-            // Rebuild the menu to flip the label.
-            if let Ok(menu) = build_menu(app, state) {
-                if let Some(tray) = app.tray_by_id("dicto-tray") {
-                    let _ = tray.set_menu(Some(menu));
-                }
-            }
-            update_tooltip(app, state);
+            refresh_pause_ui(app, state);
+            let _ = app.emit("settings:updated", ());
         }
         "check-updates" => {
             let _ = app.emit("update:check-requested", ());
@@ -157,6 +152,16 @@ pub fn update_state_indicator(app: &AppHandle, state: &SharedState) {
     update_tooltip(app, state);
     let pipeline = *state.pipeline_state.read();
     let _ = app.emit("pipeline:state", pipeline as i32);
+}
+
+pub fn refresh_pause_ui(app: &AppHandle, state: &SharedState) {
+    // Rebuild the menu to flip Pause/Resume, and keep the tray tooltip aligned.
+    if let Ok(menu) = build_menu(app, state) {
+        if let Some(tray) = app.tray_by_id("dicto-tray") {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
+    update_tooltip(app, state);
 }
 
 fn update_tooltip(app: &AppHandle, state: &SharedState) {
