@@ -2,6 +2,7 @@ use crate::commands::MicrophoneInfo;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, SampleFormat, Stream, StreamConfig};
 use parking_lot::Mutex;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -47,7 +48,9 @@ pub struct Recorder {
 }
 
 struct Inner {
-    samples: Vec<f32>,
+    /// Front-efficient because over-cap recordings discard from the oldest end
+    /// on the realtime audio callback.
+    samples: VecDeque<f32>,
     /// Maximum number of interleaved samples we'll buffer. Older samples
     /// are dropped when this is exceeded.
     capacity: usize,
@@ -64,7 +67,7 @@ impl Inner {
             // Single callback already overflows: keep only the tail.
             self.samples.clear();
             let start = data.len() - self.capacity;
-            self.samples.extend_from_slice(&data[start..]);
+            self.samples.extend(data[start..].iter().copied());
             return;
         }
         let total = self.samples.len() + data.len();
@@ -72,7 +75,7 @@ impl Inner {
             let drop_n = total - self.capacity;
             self.samples.drain(..drop_n);
         }
-        self.samples.extend_from_slice(data);
+        self.samples.extend(data.iter().copied());
     }
 }
 
@@ -91,7 +94,7 @@ impl Recorder {
             .saturating_mul(channels as usize)
             .saturating_mul(MAX_BUFFERED_SECONDS);
         let inner = Arc::new(Mutex::new(Inner {
-            samples: Vec::with_capacity((sample_rate as usize).saturating_mul(4)),
+            samples: VecDeque::with_capacity((sample_rate as usize).saturating_mul(4)),
             capacity,
         }));
         let inner_for_cb = inner.clone();
@@ -160,7 +163,7 @@ impl Recorder {
         // Dropping the stream stops the OS callbacks.
         drop(self._stream.take());
         let mut guard = self.inner.lock();
-        std::mem::take(&mut guard.samples)
+        guard.samples.drain(..).collect()
     }
 
     /// Mono-mix `interleaved` samples (in channel-major order) using simple average.
@@ -218,46 +221,55 @@ pub fn list_input_devices() -> Result<Vec<MicrophoneInfo>, RecorderError> {
 #[cfg(test)]
 mod tests {
     use super::Inner;
+    use std::collections::VecDeque;
+
+    fn deque(values: &[f32]) -> VecDeque<f32> {
+        values.iter().copied().collect()
+    }
+
+    fn buffered(inner: &Inner) -> Vec<f32> {
+        inner.samples.iter().copied().collect()
+    }
 
     #[test]
     fn push_capped_below_capacity_appends() {
         let mut inner = Inner {
-            samples: Vec::new(),
+            samples: VecDeque::new(),
             capacity: 10,
         };
         inner.push_capped(&[1.0, 2.0, 3.0]);
         inner.push_capped(&[4.0, 5.0]);
-        assert_eq!(inner.samples, vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(buffered(&inner), vec![1.0, 2.0, 3.0, 4.0, 5.0]);
     }
 
     #[test]
     fn push_capped_drops_oldest_when_exceeding() {
         let mut inner = Inner {
-            samples: vec![1.0, 2.0, 3.0, 4.0, 5.0],
+            samples: deque(&[1.0, 2.0, 3.0, 4.0, 5.0]),
             capacity: 6,
         };
         inner.push_capped(&[6.0, 7.0, 8.0]);
         // 5 + 3 = 8 samples but capacity is 6 → drop 2 oldest.
-        assert_eq!(inner.samples, vec![3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
+        assert_eq!(buffered(&inner), vec![3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
     }
 
     #[test]
     fn push_capped_single_callback_larger_than_capacity_keeps_tail() {
         let mut inner = Inner {
-            samples: vec![0.0, 0.0],
+            samples: deque(&[0.0, 0.0]),
             capacity: 4,
         };
         inner.push_capped(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
-        assert_eq!(inner.samples, vec![3.0, 4.0, 5.0, 6.0]);
+        assert_eq!(buffered(&inner), vec![3.0, 4.0, 5.0, 6.0]);
     }
 
     #[test]
     fn push_capped_empty_is_noop() {
         let mut inner = Inner {
-            samples: vec![1.0, 2.0],
+            samples: deque(&[1.0, 2.0]),
             capacity: 4,
         };
         inner.push_capped(&[]);
-        assert_eq!(inner.samples, vec![1.0, 2.0]);
+        assert_eq!(buffered(&inner), vec![1.0, 2.0]);
     }
 }
