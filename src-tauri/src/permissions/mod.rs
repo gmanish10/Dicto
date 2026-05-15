@@ -23,22 +23,74 @@ pub fn snapshot() -> PermissionsSnapshot {
     }
 }
 
-/// Trigger the system microphone-access prompt by briefly opening a cpal input
-/// stream. The NSMicrophoneUsageDescription Info.plist key makes macOS show the
-/// dialog the first time. Returns the resulting status.
-pub async fn request_microphone() -> PermissionStatus {
+/// Trigger the system microphone-access prompt via AVFoundation's
+/// `requestAccessForMediaType:completionHandler:`. Driving the prompt
+/// through AVFoundation — rather than letting cpal/CoreAudio trigger it
+/// indirectly — keeps AVFoundation's in-process authorization view
+/// fresh, so the Permissions-step poll reflects the grant live. With
+/// the cpal-triggered prompt, `microphone_status()` stayed stale until
+/// the app was relaunched. The completion handler is required by the
+/// API but unused: the frontend polls `microphone_status()`.
+pub fn request_microphone() -> PermissionStatus {
     #[cfg(target_os = "macos")]
     {
-        let _ = tokio::task::spawn_blocking(|| {
-            use cpal::traits::{DeviceTrait, HostTrait};
-            let host = cpal::default_host();
-            if let Some(device) = host.default_input_device() {
-                let _ = device.default_input_config();
+        use block2::RcBlock;
+        use objc2::msg_send;
+        use objc2::runtime::{AnyClass, Bool};
+        unsafe {
+            if let Some(cls) = AnyClass::get("AVCaptureDevice") {
+                let handler = RcBlock::new(|_granted: Bool| {});
+                let _: () = msg_send![
+                    cls,
+                    requestAccessForMediaType: AVMediaTypeAudio,
+                    completionHandler: &*handler
+                ];
             }
-        })
-        .await;
+        }
     }
     microphone_status()
+}
+
+/// Trigger the Accessibility prompt AND register Dicto in the
+/// Accessibility pane's app list. `AXIsProcessTrusted()` (used for
+/// status checks) is check-only and never registers the app, so
+/// without this the pane showed an empty list and the user had to add
+/// Dicto manually via the "+" button. `AXIsProcessTrustedWithOptions`
+/// with the prompt option registers the app and shows the system
+/// prompt (which itself offers an "Open System Settings" button).
+pub fn request_accessibility() -> PermissionStatus {
+    #[cfg(target_os = "macos")]
+    {
+        use core_foundation::base::TCFType;
+        use core_foundation::boolean::CFBoolean;
+        use core_foundation::dictionary::CFDictionary;
+        use core_foundation::string::{CFString, CFStringRef};
+        mark_accessibility_requested();
+        unsafe {
+            let key = CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt as CFStringRef);
+            let opts = CFDictionary::from_CFType_pairs(&[(
+                key.as_CFType(),
+                CFBoolean::true_value().as_CFType(),
+            )]);
+            let _ = AXIsProcessTrustedWithOptions(
+                opts.as_concrete_TypeRef() as *const std::ffi::c_void
+            );
+        }
+    }
+    accessibility_status()
+}
+
+/// Trigger the Input Monitoring prompt AND register Dicto in that
+/// pane's app list. `IOHIDCheckAccess()` (used for status checks) is
+/// check-only; `IOHIDRequestAccess()` is the variant that adds the app
+/// to the list and shows the system prompt.
+pub fn request_input_monitoring() -> PermissionStatus {
+    #[cfg(target_os = "macos")]
+    {
+        const K_IO_HID_REQUEST_TYPE_LISTEN_EVENT: u32 = 1;
+        let _ = unsafe { IOHIDRequestAccess(K_IO_HID_REQUEST_TYPE_LISTEN_EVENT) };
+    }
+    input_monitoring_status()
 }
 
 /// Deep-link to the right Privacy pane in System Settings.
@@ -106,6 +158,8 @@ fn microphone_status() -> PermissionStatus {
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     fn AXIsProcessTrusted() -> bool;
+    fn AXIsProcessTrustedWithOptions(options: *const std::ffi::c_void) -> bool;
+    static kAXTrustedCheckOptionPrompt: *const std::ffi::c_void;
 }
 
 #[cfg(target_os = "macos")]
@@ -171,6 +225,7 @@ fn accessibility_grant_overdue() -> bool {
 #[link(name = "IOKit", kind = "framework")]
 extern "C" {
     fn IOHIDCheckAccess(request: u32) -> u32;
+    fn IOHIDRequestAccess(request: u32) -> bool;
 }
 
 #[cfg(target_os = "macos")]

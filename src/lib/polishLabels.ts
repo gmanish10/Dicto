@@ -122,7 +122,6 @@ export const PROVIDER_ORDER: PolishProvider[] = [
  * Update this list as features land; the rest of the metadata is ready.
  */
 export const VISIBLE_PROVIDERS: PolishProvider[] = [
-  "auto",
   "apple_intelligence",
   "local_lite",
   "claude",

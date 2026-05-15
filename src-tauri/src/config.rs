@@ -15,11 +15,14 @@ pub enum SttProvider {
 pub enum PolishProvider {
     /// Picks the best free option available on this Mac at runtime.
     /// Resolver order: AppleIntelligence → BundledLlm → LocalLite (Enhanced).
-    #[default]
+    /// No longer offered in the UI or used as the default — kept so
+    /// settings.json files written by older versions still deserialize.
     Auto,
     /// No polishing; raw whisper output is injected as-is.
     None,
     /// Lightweight on-device cleanup (heuristics: fillers, repeats, capitalization).
+    /// The default — always available, on-device, instant.
+    #[default]
     LocalLite,
     /// On-device LLM polish via Apple Intelligence Foundation Models framework.
     /// Requires macOS 26+ on Apple Silicon with Apple Intelligence enabled.

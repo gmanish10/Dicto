@@ -103,6 +103,10 @@ export const api = {
   setSettings: (settings: Settings) => invoke<void>("set_settings", { settings }),
   checkPermissions: () => invoke<PermissionsSnapshot>("check_permissions"),
   requestMicrophonePermission: () => invoke<PermissionStatus>("request_microphone_permission"),
+  requestAccessibilityPermission: () =>
+    invoke<PermissionStatus>("request_accessibility_permission"),
+  requestInputMonitoringPermission: () =>
+    invoke<PermissionStatus>("request_input_monitoring_permission"),
   openSystemSettings: (pane: "microphone" | "accessibility" | "input_monitoring") =>
     invoke<void>("open_system_settings", { pane }),
   listMicrophones: () => invoke<MicrophoneInfo[]>("list_microphones"),
@@ -126,7 +130,6 @@ export const api = {
   installPendingUpdate: () => invoke<void>("install_pending_update"),
   checkPolishAvailability: () => invoke<PolishAvailability>("check_polish_availability"),
   startPolishModelDownload: () => invoke<void>("start_polish_model_download"),
-  reinjectTranscript: (id: number) => invoke<void>("reinject_transcript", { id }),
   recordCorrection: (raw: string, finalText: string) =>
     invoke<void>("record_correction", { raw, finalText }),
   openMainWindow: () => invoke<void>("open_main_window"),

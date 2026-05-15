@@ -6,6 +6,41 @@ All notable changes to Dicto are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-05-15
+
+Patch release: onboarding and permission-flow fixes, plus UI cleanup.
+
+### Install
+
+**👉 [Download Dicto_0.3.4_aarch64.dmg](https://github.com/gmanish10/Dicto/releases/download/v0.3.4/Dicto_0.3.4_aarch64.dmg)**
+
+Apple Silicon (M-series) only. Existing v0.1.2+ users get this via the built-in
+updater (About → Install and restart). First-time install: drag to `/Applications`,
+then `xattr -d com.apple.quarantine /Applications/Dicto.app` once.
+
+### Fixed
+- **Onboarding "Back" works again.** Returning to the Permissions step no
+  longer bounces you straight forward — you can review it with all three
+  permissions granted.
+- **Microphone permission updates live.** Granting Microphone access is now
+  reflected immediately, without quitting and reopening the app.
+- **Dicto auto-appears in System Settings.** Granting Accessibility or Input
+  Monitoring now pre-lists Dicto in the relevant pane — no more adding it
+  manually with the "+" button.
+
+### Changed
+- The default cleanup is now **Basic cleanup** (on-device, always available).
+  macOS 26 users still get Apple Intelligence auto-selected during onboarding.
+- The onboarding Permissions "Continue" button is simply labelled "Continue".
+- The onboarding result panel's "Try again" control moved into a panel header.
+
+### Removed
+- The redundant "Best available" cleanup option.
+- The History "Re-paste" button — use "Copy"; it puts the transcript on the
+  clipboard reliably, whereas re-paste couldn't target the right app from
+  inside Dicto's own window.
+- The Settings "Run onboarding again" card.
+
 ## [0.3.3] - 2026-05-15
 
 Patch release: removes the recording pill, fixes onboarding / Settings /

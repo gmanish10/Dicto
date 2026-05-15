@@ -24,10 +24,6 @@ export default function History() {
     await navigator.clipboard.writeText(text);
   }
 
-  async function reinject(id: number) {
-    await api.reinjectTranscript(id);
-  }
-
   async function saveEdit(row: TranscriptRow) {
     await api.recordCorrection(row.raw, editValue);
     setEditing(null);
@@ -70,9 +66,6 @@ export default function History() {
               <div className="flex gap-2">
                 <button type="button" className="hover:underline" onClick={() => copy(row.polished)}>
                   Copy
-                </button>
-                <button type="button" className="hover:underline" onClick={() => reinject(row.id)}>
-                  Re-paste
                 </button>
                 <button
                   type="button"

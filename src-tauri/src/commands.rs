@@ -26,8 +26,18 @@ pub fn check_permissions() -> PermissionsSnapshot {
 }
 
 #[tauri::command]
-pub async fn request_microphone_permission() -> PermissionStatus {
-    permissions::request_microphone().await
+pub fn request_microphone_permission() -> PermissionStatus {
+    permissions::request_microphone()
+}
+
+#[tauri::command]
+pub fn request_accessibility_permission() -> PermissionStatus {
+    permissions::request_accessibility()
+}
+
+#[tauri::command]
+pub fn request_input_monitoring_permission() -> PermissionStatus {
+    permissions::request_input_monitoring()
 }
 
 #[tauri::command]
@@ -208,19 +218,6 @@ pub async fn install_pending_update(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn reinject_transcript(state: State<'_, SharedState>, id: i64) -> Result<(), String> {
-    let row = state
-        .history
-        .get_transcript(id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "transcript not found".to_string())?;
-    let injectable = crate::inject::format_for_injection(&row.polished);
-    crate::inject::paste::ClipboardPasteInjector
-        .inject(&injectable)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub fn record_correction(
     state: State<'_, SharedState>,
     raw: String,
@@ -390,6 +387,3 @@ pub async fn start_polish_model_download(
         }
     }
 }
-
-// Trait import for the inject command above.
-use crate::inject::Injector;

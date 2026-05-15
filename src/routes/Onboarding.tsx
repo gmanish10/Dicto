@@ -99,34 +99,24 @@ export default function Onboarding() {
       .then((a) => setAppleAvailable(a.apple_intelligence.available));
   }, []);
 
-  // Auto-advance past Permissions if all three are already granted —
-  // happens when the user comes back after a macOS-forced relaunch
-  // mid-flow.
+  // Auto-pre-select Apple Intelligence cleanup on macOS 26+ when the
+  // user is still on the default (`local_lite`, or legacy `auto`).
+  // Picks the best free option without forcing the user to dig through
+  // the dropdown. The ref guard makes this run exactly once — without
+  // it, a later explicit pick of "Basic cleanup" would be bounced
+  // straight back to Apple Intelligence.
+  const didPreselectPolish = useRef(false);
   useEffect(() => {
-    if (stepId !== "permissions") return;
+    if (didPreselectPolish.current || !settings || !appleAvailable) return;
+    didPreselectPolish.current = true;
     if (
-      perms.microphone === "granted" &&
-      perms.accessibility === "granted" &&
-      perms.input_monitoring === "granted"
+      settings.polish_provider === "local_lite" ||
+      settings.polish_provider === "auto"
     ) {
-      void clearResume();
-      void api.startRuntime();
-      setStepId("models");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stepId, perms.microphone, perms.accessibility, perms.input_monitoring]);
-
-  // Auto-pre-select Apple Intelligence cleanup on macOS 26+ if the user
-  // is still on the default `auto`. Picks the best free option without
-  // forcing the user to dig through the dropdown.
-  useEffect(() => {
-    if (!settings || !appleAvailable) return;
-    if (settings.polish_provider === "auto") {
       void writeSettings({ polish_provider: "apple_intelligence" });
     }
-    // intentionally only runs once — guard via the early-out above
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appleAvailable, settings?.polish_provider]);
+  }, [appleAvailable, settings]);
 
   const refreshPerms = useCallback(async () => {
     setPerms(await api.checkPermissions());
@@ -266,7 +256,16 @@ export default function Onboarding() {
               await api.requestMicrophonePermission();
               await refreshPerms();
             }}
-            onArmResume={armResume}
+            onRequestInputMonitoring={async () => {
+              await armResume();
+              await api.requestInputMonitoringPermission();
+              await refreshPerms();
+            }}
+            onRequestAccessibility={async () => {
+              await armResume();
+              await api.requestAccessibilityPermission();
+              await refreshPerms();
+            }}
             onBack={() => setStepId("welcome")}
             onNext={onPermissionsContinue}
           />
@@ -391,14 +390,16 @@ function PermissionsStep({
   perms,
   allGranted,
   onRequestMic,
-  onArmResume,
+  onRequestInputMonitoring,
+  onRequestAccessibility,
   onBack,
   onNext,
 }: {
   perms: PermissionsSnapshot;
   allGranted: boolean;
   onRequestMic: () => Promise<void>;
-  onArmResume: () => void | Promise<void>;
+  onRequestInputMonitoring: () => Promise<void>;
+  onRequestAccessibility: () => Promise<void>;
   onBack: () => void;
   onNext: () => void | Promise<void>;
 }) {
@@ -420,17 +421,17 @@ function PermissionsStep({
         />
         <PermissionRow
           label="Input Monitoring"
-          description="So the global shortcut works while another app is focused. Click Open System Settings, enable Dicto, then come back here."
+          description="So the global shortcut works while another app is focused."
           status={perms.input_monitoring}
           pane="input_monitoring"
-          onBeforeOpenSettings={() => void onArmResume()}
+          onRequest={onRequestInputMonitoring}
         />
         <PermissionRow
           label="Accessibility"
           description="So Dicto can paste cleaned-up text into whatever app you're typing in."
           status={perms.accessibility}
           pane="accessibility"
-          onBeforeOpenSettings={() => void onArmResume()}
+          onRequest={onRequestAccessibility}
         />
       </div>
       <div className="flex items-center justify-between pt-2">
@@ -443,7 +444,7 @@ function PermissionsStep({
           disabled={!allGranted}
           onClick={() => onNext()}
         >
-          {allGranted ? "Continue" : "Grant all three to continue"}
+          Continue
         </button>
       </div>
     </div>
@@ -619,9 +620,9 @@ function keyConfigured(keys: ApiKeyStatus[], which: ApiKey): boolean {
 // Step 4: Try it
 
 const SAMPLE_PROMPTS = [
-  "Hey, um, just a reminder to pick up groceries on the way home.",
-  "Let's meet at 3 PM, um no, 4 PM tomorrow to discuss the quarterly numbers.",
+  "Let's meet at 3 PM, no wait, 4 PM tomorrow to discuss the quarterly numbers.",
   "Email John back about the project — tell him I need the spec by Friday.",
+  "Hey, um, just a reminder to pick up groceries on the way home.",
 ];
 
 function TryItStep({
@@ -674,7 +675,7 @@ function TryItStep({
 
       <div className="rounded-md border border-ink-200 bg-ink-50 p-4 text-sm dark:border-ink-700 dark:bg-ink-800">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
-          Try saying one of these
+          Try saying one of these or any other sentence you want to try
         </div>
         <ul className="space-y-1.5 text-ink-700 dark:text-ink-200">
           {SAMPLE_PROMPTS.map((p) => (
@@ -730,6 +731,12 @@ function ResultPanel({ demo, onRetry }: { demo: DemoResult; onRetry: () => void 
   return (
     <div className="overflow-hidden rounded-md border border-ink-200 dark:border-ink-700">
       <div className="h-1 bg-gradient-brand" />
+      <div className="flex items-center justify-between border-b border-ink-200 px-4 py-2 dark:border-ink-700">
+        <span className="text-sm font-medium">Result</span>
+        <button type="button" className="text-xs text-ink-500 underline" onClick={onRetry}>
+          Try again
+        </button>
+      </div>
       <div className="space-y-3 p-4">
         <div>
           <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-500">
@@ -738,13 +745,8 @@ function ResultPanel({ demo, onRetry }: { demo: DemoResult; onRetry: () => void 
           <p className="rounded bg-ink-50 p-3 text-sm dark:bg-ink-800">{demo.raw || "(empty)"}</p>
         </div>
         <div>
-          <div className="mb-1 flex items-center justify-between">
-            <div className="text-xs font-semibold uppercase tracking-wide text-ink-500">
-              After cleanup{demo.polishProvider ? ` (${demo.polishProvider})` : ""}
-            </div>
-            <button type="button" className="text-xs text-ink-500 underline" onClick={onRetry}>
-              Try again
-            </button>
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-500">
+            After cleanup{demo.polishProvider ? ` (${demo.polishProvider})` : ""}
           </div>
           <p className="rounded bg-ink-50 p-3 text-sm dark:bg-ink-800">
             {demo.polished || "(empty)"}

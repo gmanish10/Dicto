@@ -1011,11 +1011,13 @@ dependencies = [
 
 [[package]]
 name = "dicto"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "arboard",
  "async-trait",
+ "block2 0.5.1",
+ "core-foundation 0.10.1",
  "core-graphics 0.24.0",
  "cpal",
  "crossbeam-channel",
