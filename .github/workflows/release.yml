@@ -5,8 +5,9 @@ on:
     tags:
       - "v*"
 
-# Opt JS-based actions (checkout, setup-node, tauri-action) into Node 24 ahead
-# of the June 2026 forced migration. Silences the Node 20 deprecation warning.
+# checkout / setup-node are pinned to v5 below (Node-24 native). This flag is
+# a residual safety net: it forces any slower-to-update JS action (rust-cache,
+# tauri-action) onto Node 24 until it ships a Node-24 release of its own.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -28,16 +29,20 @@ jobs:
           #   target: x86_64-apple-darwin
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - name: Set up Rust toolchain
+        # Preinstalled rustup directly — see the note in ci.yml on the
+        # flaky third-party toolchain reinstall.
+        run: |
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+          rustc --version && cargo --version
 
       - uses: Swatinem/rust-cache@v2
         with:

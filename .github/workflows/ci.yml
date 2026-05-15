@@ -5,8 +5,9 @@ on:
   push:
     branches: [main]
 
-# Opt JS-based actions (checkout, setup-node, etc.) into Node 24 ahead of the
-# June 2026 forced migration. Silences the Node 20 deprecation warning.
+# checkout / setup-node are pinned to v5 below (Node-24 native). This flag is
+# a residual safety net: it forces any slower-to-update JS action (e.g.
+# rust-cache) onto Node 24 until it ships a Node-24 release of its own.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -14,10 +15,17 @@ jobs:
   rust:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      - uses: actions/checkout@v5
+      - name: Set up Rust toolchain
+        # Use the runner's preinstalled rustup directly rather than a
+        # third-party toolchain action. A flaky rustup reinstall was
+        # intermittently leaving `cargo` resolving to `rustup-init`,
+        # failing `cargo fmt` with "unexpected argument 'fmt'". Going
+        # through the preinstalled rustup avoids that reinstall.
+        run: |
+          rustup default stable
+          rustup component add rustfmt clippy
+          rustc --version && cargo --version
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
@@ -34,8 +42,8 @@ jobs:
   frontend:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
