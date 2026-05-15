@@ -58,7 +58,9 @@ pub fn run() {
             // "Grant" inside the redesigned onboarding flow, which
             // chains `start_runtime` from `finish_onboarding`.
             if app_state.config.read().onboarding_completed {
-                pipeline::spawn_coordinator(handle.clone(), app_state.clone());
+                if let Err(err) = pipeline::spawn_coordinator(handle.clone(), app_state.clone()) {
+                    tracing::error!(error = %err, "failed to start dictation runtime");
+                }
             } else {
                 tracing::info!(
                     "onboarding not yet complete — runtime spawn deferred to start_runtime"

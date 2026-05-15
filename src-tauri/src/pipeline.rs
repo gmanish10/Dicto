@@ -98,7 +98,7 @@ fn spawn_recorder_service() -> Sender<RecCommand> {
 /// because the redesigned onboarding flow defers the first spawn until
 /// the user has granted permissions inside step 2 — and the IPC fires
 /// from React, which can re-mount and retry.
-pub fn spawn_coordinator(app: AppHandle, state: SharedState) {
+pub fn spawn_coordinator(app: AppHandle, state: SharedState) -> Result<(), String> {
     use std::sync::atomic::Ordering;
     if state
         .runtime_started
@@ -106,18 +106,33 @@ pub fn spawn_coordinator(app: AppHandle, state: SharedState) {
         .is_err()
     {
         tracing::debug!("spawn_coordinator: already started, skipping");
-        return;
+        return Ok(());
     }
     tracing::info!("spawn_coordinator: starting runtime threads");
-    spawn_coordinator_inner(app, state);
+    if let Err(err) = spawn_coordinator_inner(app, state.clone()) {
+        state.runtime_started.store(false, Ordering::Release);
+        return Err(err);
+    }
+    Ok(())
 }
 
-fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
+fn spawn_coordinator_inner(app: AppHandle, state: SharedState) -> Result<(), String> {
     // Shared hotkey config that the rdev listener reads; updated when settings change.
     let hotkey_config: Arc<RwLock<Option<hotkey::ParsedHotkey>>> = Arc::new(RwLock::new(
         hotkey::listener::parse(&state.config.read().hotkey.chord),
     ));
     let paused = Arc::new(RwLock::new(state.config.read().paused));
+
+    // Start the macOS CGEventTap-based hotkey listener (our replacement for
+    // rdev, which panics through extern "C" on macOS 26 keycodes it doesn't
+    // recognize). Do this before registering other long-lived runtime pieces
+    // so a tap startup failure leaves a clean retry path.
+    #[cfg(target_os = "macos")]
+    hotkey::mac_tap::spawn(
+        state.hotkey_tx.clone(),
+        hotkey_config.clone(),
+        paused.clone(),
+    )?;
 
     {
         let state_for_listen = state.clone();
@@ -156,12 +171,6 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
 
     // Start dedicated worker threads.
     let recorder_tx = spawn_recorder_service();
-
-    // Start the macOS CGEventTap-based hotkey listener (our replacement for
-    // rdev, which panics through extern "C" on macOS 26 keycodes it doesn't
-    // recognize).
-    #[cfg(target_os = "macos")]
-    hotkey::mac_tap::spawn(state.hotkey_tx.clone(), hotkey_config, paused);
     #[cfg(not(target_os = "macos"))]
     {
         let _ = hotkey_config;
@@ -344,6 +353,7 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
             }
         }
     });
+    Ok(())
 }
 
 // 8 args is one over clippy's default threshold of 7; bundling them into a

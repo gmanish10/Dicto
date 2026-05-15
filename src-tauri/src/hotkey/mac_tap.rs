@@ -15,6 +15,7 @@ use super::{HotkeyEvent, ParsedHotkey};
 use crossbeam_channel::Sender;
 use parking_lot::RwLock;
 use std::ffi::c_void;
+use std::sync::mpsc;
 use std::sync::Arc;
 
 // Raw keycodes for the small set of "main" keys we support.
@@ -324,16 +325,15 @@ pub fn spawn(
     tx: Sender<HotkeyEvent>,
     hotkey: Arc<RwLock<Option<ParsedHotkey>>>,
     paused: Arc<RwLock<bool>>,
-) {
+) -> Result<(), String> {
     let shared_state = Arc::new(parking_lot::Mutex::new(ModState::default()));
-    spawn_modifier_poll(
-        shared_state.clone(),
-        hotkey.clone(),
-        paused.clone(),
-        tx.clone(),
-    );
+    let (ready_tx, ready_rx) = mpsc::sync_channel(1);
 
-    let state_for_tap = shared_state;
+    let state_for_tap = shared_state.clone();
+    let state_for_poll = shared_state;
+    let hotkey_for_poll = hotkey.clone();
+    let paused_for_poll = paused.clone();
+    let tx_for_poll = tx.clone();
     std::thread::Builder::new()
         .name("dicto-hotkey".into())
         .spawn(move || {
@@ -359,29 +359,40 @@ pub fn spawn(
                     user_info,
                 );
                 if tap.is_null() {
+                    let msg = "CGEventTapCreate returned NULL — likely missing Input Monitoring permission. \
+                               Grant it under System Settings → Privacy & Security → Input Monitoring, then retry."
+                        .to_string();
                     tracing::error!(
-                        "CGEventTapCreate returned NULL — likely missing Input Monitoring permission. \
-                         Grant it under System Settings → Privacy & Security → Input Monitoring, then quit and relaunch Dicto."
+                        "{msg}"
                     );
+                    let _ = ready_tx.send(Err(msg));
                     let _ = Box::from_raw(user_info as *mut CallbackContext);
                     return;
                 }
                 tracing::info!("CGEventTapCreate succeeded");
                 let source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
                 if source.is_null() {
-                    tracing::error!("CFMachPortCreateRunLoopSource failed");
+                    let msg = "CFMachPortCreateRunLoopSource failed".to_string();
+                    tracing::error!("{msg}");
+                    let _ = ready_tx.send(Err(msg));
                     let _ = Box::from_raw(user_info as *mut CallbackContext);
                     return;
                 }
                 let current_loop = CFRunLoopGetCurrent();
                 CFRunLoopAddSource(current_loop, source, kCFRunLoopCommonModes);
                 CGEventTapEnable(tap, true);
+                spawn_modifier_poll(state_for_poll, hotkey_for_poll, paused_for_poll, tx_for_poll);
+                let _ = ready_tx.send(Ok(()));
                 tracing::info!("CGEventTap installed, entering run loop");
                 CFRunLoopRun();
                 let _ = Box::from_raw(user_info as *mut CallbackContext);
             }
         })
-        .expect("failed to spawn dicto-hotkey thread");
+        .map_err(|e| format!("failed to spawn dicto-hotkey thread: {e}"))?;
+
+    ready_rx
+        .recv()
+        .map_err(|e| format!("dicto-hotkey thread exited before reporting startup: {e}"))?
 }
 
 /// How often the modifier-poll thread reconciles our event-driven state
