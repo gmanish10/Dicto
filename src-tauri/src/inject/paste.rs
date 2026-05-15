@@ -88,7 +88,12 @@ impl Injector for ClipboardPasteInjector {
                 // Leave the clipboard set; the user can paste manually.
                 return Err(InjectError::SecureInputActive);
             }
-            post_cmd_v_macos().map_err(InjectError::Event)?;
+            if let Err(e) = post_cmd_v_macos() {
+                if let Some(prior_text) = prior {
+                    queue_clipboard_restore(text.to_string(), prior_text);
+                }
+                return Err(InjectError::Event(e));
+            }
         }
 
         // Restore the previous clipboard contents on a short delay, but only if
