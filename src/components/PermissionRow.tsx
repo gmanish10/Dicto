@@ -6,9 +6,9 @@ interface Props {
   status: PermissionStatus;
   pane: "microphone" | "accessibility" | "input_monitoring";
   /**
-   * Only set for the microphone row — macOS exposes a programmatic
-   * prompt API for mic but not for accessibility or input monitoring,
-   * so those rows fall back to the System Settings deep-link.
+   * Optional first-time request hook. Once macOS reports a permission
+   * as denied, the prompt APIs are one-shot; users must grant it from
+   * System Settings instead.
    */
   onRequest?: () => Promise<void> | void;
 }
@@ -57,7 +57,9 @@ export function PermissionRow({ label, description, status, pane, onRequest }: P
             type="button"
             className="btn-primary text-xs"
             onClick={async () => {
-              if (onRequest) {
+              if (isDenied) {
+                await api.openSystemSettings(pane);
+              } else if (onRequest) {
                 await onRequest();
               } else {
                 await api.openSystemSettings(pane);
