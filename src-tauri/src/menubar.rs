@@ -135,6 +135,7 @@ fn handle_menu_event(app: &AppHandle, state: &SharedState, id: &str) {
             cfg.paused = !cfg.paused;
             drop(cfg);
             let _ = state.save_settings();
+            let _ = app.emit("settings:updated", ());
             // Rebuild the menu to flip the label.
             if let Ok(menu) = build_menu(app, state) {
                 if let Some(tray) = app.tray_by_id("dicto-tray") {
