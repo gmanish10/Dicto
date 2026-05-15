@@ -89,7 +89,7 @@ impl Injector for ClipboardPasteInjector {
                 return Err(InjectError::SecureInputActive);
             }
             if let Err(e) = post_cmd_v_macos() {
-                if let Some(prior_text) = prior {
+                if let Some(prior_text) = prior.clone() {
                     queue_clipboard_restore(text.to_string(), prior_text);
                 }
                 return Err(InjectError::Event(e));
