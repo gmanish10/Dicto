@@ -31,10 +31,10 @@ pub struct AppState {
     /// rdev producer side (set by hotkey::listener when it starts).
     pub hotkey_tx: Sender<HotkeyEvent>,
     pub hotkey_rx: Receiver<HotkeyEvent>,
-    /// True once the pipeline coordinator + hotkey tap have been spawned.
+    /// True while the pipeline coordinator + hotkey tap are starting or spawned.
     /// Lets `start_runtime` be idempotent: onboarding finish triggers a
     /// spawn, but subsequent calls (e.g. duplicate IPC, dev reload) are
-    /// no-ops. Set with `compare_exchange` from the spawn helper.
+    /// no-ops. Cleared again if startup fails before the tap is live.
     pub runtime_started: AtomicBool,
 }
 
