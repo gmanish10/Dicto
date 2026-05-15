@@ -59,13 +59,13 @@ pub struct Settings {
     pub auto_paste: bool,
     pub max_recording_seconds: u32,
     pub onboarding_completed: bool,
-    /// Persisted step the user was on when they last left the onboarding
-    /// flow. Empty string before onboarding starts; one of the step IDs
-    /// from `Onboarding.tsx` ("welcome" / "permissions" / "models" /
-    /// "try-it" / "discover" / "done") otherwise. Lets us resume after
-    /// the macOS-forced quit-and-relaunch that follows an Accessibility
-    /// or Input Monitoring grant — without this, the user lands back on
-    /// Welcome and has to walk through the flow again.
+    /// Armed resume marker for onboarding. Empty in the normal case; set
+    /// to "permissions" only at the moment the user initiates an
+    /// Accessibility or Input Monitoring grant — the one event that
+    /// triggers a macOS-forced quit-and-relaunch. On the next launch a
+    /// "permissions" value resumes onto the Permissions step; any other
+    /// launch (fresh install, normal quit, reinstall) starts at Welcome.
+    /// Cleared by `finish_onboarding` and on leaving the Permissions step.
     pub onboarding_step: String,
     pub paused: bool,
     /// Show the floating "Recording" pill above all apps while the

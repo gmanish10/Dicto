@@ -64,10 +64,6 @@ interface DemoResult {
   polishProvider: string | null;
 }
 
-function isStepId(s: string): s is StepId {
-  return STEPS.some((step) => step.id === s);
-}
-
 export default function Onboarding() {
   const navigate = useNavigate();
   const [stepId, setStepIdInternal] = useState<StepId>("welcome");
@@ -80,32 +76,21 @@ export default function Onboarding() {
   const [sawDemo, setSawDemo] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
 
-  // Persist the current step to disk. macOS forces a quit+relaunch when
-  // the user grants Accessibility or Input Monitoring; without this the
-  // app would land back on Welcome and the user would have to walk
-  // through everything again. Storing the step ID server-side keeps the
-  // resume seamless.
-  const setStepId = useCallback((next: StepId) => {
-    setStepIdInternal(next);
-    void api
-      .getSettings()
-      .then((cur) => api.setSettings({ ...cur, onboarding_step: next }))
-      .catch(() => undefined);
-  }, []);
+  // Step navigation is in-memory only. Onboarding does not persist the
+  // step on every transition — it only needs to survive one specific
+  // event, the macOS-forced quit+relaunch when the user grants
+  // Accessibility or Input Monitoring, which `armResume` handles.
+  const setStepId = setStepIdInternal;
 
-  // Initial settings + key status load. If `onboarding_step` is set and
-  // valid, resume there instead of starting at Welcome. We also call
-  // `start_runtime` eagerly if the saved step is past Permissions —
-  // it's idempotent, and skipping it would leave the hotkey dead during
-  // Try-it after a relaunch.
+  // Initial settings + key status load. Resume onto the Permissions
+  // step only when the resume marker was armed (see `armResume`) — i.e.
+  // the user initiated an Accessibility / Input-Monitoring grant and
+  // macOS force-quit Dicto. Every other launch starts at Welcome.
   useEffect(() => {
     void api.getSettings().then((s) => {
       setSettings(s);
-      if (s.onboarding_step && isStepId(s.onboarding_step)) {
-        setStepIdInternal(s.onboarding_step);
-        if (["models", "try-it", "discover", "done"].includes(s.onboarding_step)) {
-          void api.startRuntime();
-        }
+      if (s.onboarding_step === "permissions") {
+        setStepIdInternal("permissions");
       }
     });
     void api.getApiKeyStatus().then(setKeys);
@@ -124,6 +109,7 @@ export default function Onboarding() {
       perms.accessibility === "granted" &&
       perms.input_monitoring === "granted"
     ) {
+      void clearResume();
       void api.startRuntime();
       setStepId("models");
     }
@@ -212,15 +198,32 @@ export default function Onboarding() {
     await emit("settings:updated");
   }, []);
 
+  // Arm / disarm the onboarding resume marker. macOS force-quits Dicto
+  // when the user grants Accessibility or Input Monitoring; arming the
+  // marker right before that deep-link is the only signal that the
+  // relaunch should resume onto Permissions rather than restart at
+  // Welcome. It's cleared the moment the user leaves the Permissions
+  // step (and by `finish_onboarding` server-side).
+  const armResume = useCallback(async () => {
+    const cur = await api.getSettings();
+    await api.setSettings({ ...cur, onboarding_step: "permissions" });
+  }, []);
+  const clearResume = useCallback(async () => {
+    const cur = await api.getSettings();
+    if (cur.onboarding_step === "") return;
+    await api.setSettings({ ...cur, onboarding_step: "" });
+  }, []);
+
   // Move runtime startup to the moment the user clears Permissions. The
   // hotkey tap + recorder need to be alive for Try-it but spawning at
   // app launch is what caused the cold TCC prompts in v0.2.0.
   // `spawn_coordinator` is idempotent so a duplicate call from React
   // re-mount is harmless.
   const onPermissionsContinue = useCallback(async () => {
+    await clearResume();
     await api.startRuntime();
     setStepId("models");
-  }, []);
+  }, [clearResume]);
 
   async function finish() {
     await api.finishOnboarding();
@@ -263,6 +266,7 @@ export default function Onboarding() {
               await api.requestMicrophonePermission();
               await refreshPerms();
             }}
+            onArmResume={armResume}
             onBack={() => setStepId("welcome")}
             onNext={onPermissionsContinue}
           />
@@ -387,12 +391,14 @@ function PermissionsStep({
   perms,
   allGranted,
   onRequestMic,
+  onArmResume,
   onBack,
   onNext,
 }: {
   perms: PermissionsSnapshot;
   allGranted: boolean;
   onRequestMic: () => Promise<void>;
+  onArmResume: () => void | Promise<void>;
   onBack: () => void;
   onNext: () => void | Promise<void>;
 }) {
@@ -417,12 +423,14 @@ function PermissionsStep({
           description="So the global shortcut works while another app is focused. Click Open System Settings, enable Dicto, then come back here."
           status={perms.input_monitoring}
           pane="input_monitoring"
+          onBeforeOpenSettings={() => void onArmResume()}
         />
         <PermissionRow
           label="Accessibility"
           description="So Dicto can paste cleaned-up text into whatever app you're typing in."
           status={perms.accessibility}
           pane="accessibility"
+          onBeforeOpenSettings={() => void onArmResume()}
         />
       </div>
       <div className="flex items-center justify-between pt-2">

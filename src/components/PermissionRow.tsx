@@ -11,6 +11,13 @@ interface Props {
    * so those rows fall back to the System Settings deep-link.
    */
   onRequest?: () => Promise<void> | void;
+  /**
+   * Fired right before the "Allow" button deep-links to System Settings.
+   * Onboarding uses this to arm the resume marker for the Accessibility
+   * and Input-Monitoring rows, since granting those forces a macOS
+   * quit+relaunch.
+   */
+  onBeforeOpenSettings?: () => void;
 }
 
 /**
@@ -25,7 +32,14 @@ interface Props {
  * - **Denied**: same as not-granted but with the muted-red pill, so the
  *   user can re-open System Settings to flip it.
  */
-export function PermissionRow({ label, description, status, pane, onRequest }: Props) {
+export function PermissionRow({
+  label,
+  description,
+  status,
+  pane,
+  onRequest,
+  onBeforeOpenSettings,
+}: Props) {
   const isGranted = status === "granted";
   const isDenied = status === "denied";
 
@@ -60,6 +74,7 @@ export function PermissionRow({ label, description, status, pane, onRequest }: P
               if (onRequest) {
                 await onRequest();
               } else {
+                onBeforeOpenSettings?.();
                 await api.openSystemSettings(pane);
               }
             }}

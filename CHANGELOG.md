@@ -6,6 +6,17 @@ All notable changes to Dicto are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Onboarding no longer resumes mid-flow on a normal launch.** It now
+  resumes onto the Permissions step *only* after the macOS-forced
+  quit+relaunch that a permission grant triggers; fresh installs, normal
+  quits, and reinstalls all start at Welcome.
+
+### Changed
+- **Apple Intelligence cleanup applies light fluency fixes.** It now
+  corrects clear grammar mistakes and smooths awkward or run-on phrasing,
+  while still preserving your meaning, tone, and wording.
+
 ## [0.3.2] - 2026-05-15
 
 Patch release: audio, model-download, and permissions hardening, plus an

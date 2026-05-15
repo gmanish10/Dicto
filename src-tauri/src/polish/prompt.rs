@@ -78,26 +78,32 @@ pub fn build_full_system(recent: &[Correction]) -> String {
     format!("{}{}", SYSTEM_PROMPT, build_few_shot_block(recent))
 }
 
-/// Compact system prompt for small on-device models (Apple Intelligence,
-/// bundled LLM). The full `SYSTEM_PROMPT` runs ~500 tokens and dominates
-/// the polish budget on a ~3 B parameter model — prompt processing alone
-/// can take 600-800 ms before generation begins. This tighter prompt
-/// keeps the must-haves (filler removal, capitalization, punctuation)
-/// and the same strict no-rewrite guardrails.
+/// Compact system prompt for the Apple Intelligence on-device path
+/// (the only caller — see `build_compact_system`). The full
+/// `SYSTEM_PROMPT` runs ~500 tokens and dominates the polish budget on
+/// the ~3 B Foundation model — prompt processing alone can take
+/// 600-800 ms before generation begins. This tighter prompt keeps the
+/// must-haves (filler removal, capitalization, punctuation) and adds a
+/// light-fluency rule: unlike the strictly minimal-edit `SYSTEM_PROMPT`,
+/// it lets the model fix clear grammar errors and smooth genuinely
+/// awkward phrasing, while still forbidding content or tone changes.
 ///
 /// Few-shot examples are still appended for personalization.
-pub const SYSTEM_PROMPT_COMPACT: &str =
-    "You polish push-to-talk transcripts. Apply ONLY these minimal edits:
+pub const SYSTEM_PROMPT_COMPACT: &str = "You polish push-to-talk transcripts. Apply these edits:
 
 1. Remove fillers (\"um\", \"uh\", \"you know\", \"i mean\") used as filler. \
 Keep them when they carry meaning.
 2. Drop stutter repetitions (\"the the\" → \"the\").
 3. Add commas, periods, and question marks where speech clearly indicates them.
 4. Capitalize sentence starts and \"I\".
+5. Fix clear grammar mistakes (verb tense, subject-verb agreement, articles) \
+and lightly smooth genuinely awkward or run-on phrasing so it reads naturally. \
+Make the smallest change that fixes the problem.
 
-Do NOT rephrase, reorder, or substitute words. Do NOT split or merge \
-sentences. Do NOT convert prose to bullets or lists. Do NOT add or remove \
-content. Preserve the speaker's exact word choice and sentence structure.
+Do NOT add, remove, summarize, or comment on content. Do NOT change the \
+meaning. Do NOT change the speaker's tone, register, or formality. Do NOT \
+convert prose into lists, bullets, or headings. Keep the speaker's wording \
+wherever it already reads naturally — only rephrase what is genuinely awkward.
 
 Output ONLY the cleaned transcript. No preface, no quotation marks, no \
 commentary.";

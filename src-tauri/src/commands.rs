@@ -259,7 +259,14 @@ pub fn start_runtime(app: AppHandle, state: State<'_, SharedState>) {
 
 #[tauri::command]
 pub fn finish_onboarding(app: AppHandle, state: State<'_, SharedState>) -> Result<(), String> {
-    state.config.write().onboarding_completed = true;
+    {
+        let mut cfg = state.config.write();
+        cfg.onboarding_completed = true;
+        // Clear the resume marker so a future re-onboarding (or a reinstall
+        // that inherits this settings.json) starts cleanly at Welcome
+        // rather than resuming onto the Permissions step.
+        cfg.onboarding_step.clear();
+    }
     state.save_settings().map_err(|e| e.to_string())?;
     // Chain the runtime spawn so the React side only has to round-trip
     // once: marking onboarding done implies "I've granted everything,

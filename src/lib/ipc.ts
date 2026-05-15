@@ -28,9 +28,10 @@ export interface Settings {
   onboarding_completed: boolean;
   paused: boolean;
   show_recording_overlay: boolean;
-  /** Persisted step the user was on if onboarding hasn't finished yet.
-   *  Empty string before onboarding starts. Used to resume after macOS
-   *  forces a relaunch on permission grant. */
+  /** Armed onboarding resume marker. Empty normally; set to "permissions"
+   *  only when the user initiates an Accessibility / Input-Monitoring
+   *  grant, so the macOS-forced relaunch resumes onto Permissions. Any
+   *  other launch starts at Welcome. */
   onboarding_step: string;
 }
 
