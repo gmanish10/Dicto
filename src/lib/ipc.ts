@@ -27,8 +27,6 @@ export interface Settings {
   max_recording_seconds: number;
   onboarding_completed: boolean;
   paused: boolean;
-  launch_at_login: boolean;
-  telemetry_opted_in: boolean;
   show_recording_overlay: boolean;
   /** Persisted step the user was on if onboarding hasn't finished yet.
    *  Empty string before onboarding starts. Used to resume after macOS

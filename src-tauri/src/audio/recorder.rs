@@ -19,6 +19,23 @@ pub enum RecorderError {
     NotRunning,
 }
 
+/// Hard ceiling on how much audio we'll keep in memory while recording,
+/// expressed in seconds × the device's sample rate × channels. Beyond
+/// this cap we drop the oldest samples instead of growing the buffer
+/// indefinitely. Sized to match the coordinator's `max_recording_seconds`
+/// upper bound (`DEFAULT_MAX_RECORDING_S * 2 == 600 s`) so the coordinator
+/// still has the most recent ≤600 s of audio to decide whether to keep
+/// or discard.
+///
+/// The coordinator already rejects recordings that exceed
+/// `max_recording_seconds` outright; this cap is a memory safety belt
+/// for the worst case (e.g. macOS misses the modifier-release event,
+/// the hotkey watchdog hasn't fired yet, and audio keeps streaming for
+/// minutes). Without it, ~5 minutes of stereo 48 kHz f32 audio is ~110 MB
+/// and an hour is ~1.3 GB; with it we cap at ~220 MB regardless of how
+/// long the stream stays open.
+const MAX_BUFFERED_SECONDS: usize = 600;
+
 /// Captures audio from the user's microphone into an in-memory buffer.
 /// Stop() returns the recorded samples in the device's native rate, interleaved if
 /// multichannel — callers must resample to 16 kHz mono via `resample::to_16k_mono`.
@@ -31,6 +48,32 @@ pub struct Recorder {
 
 struct Inner {
     samples: Vec<f32>,
+    /// Maximum number of interleaved samples we'll buffer. Older samples
+    /// are dropped when this is exceeded.
+    capacity: usize,
+}
+
+impl Inner {
+    /// Append samples, dropping the oldest if we'd exceed `capacity`.
+    /// Worst-case keeps the most recent `capacity` samples.
+    fn push_capped(&mut self, data: &[f32]) {
+        if data.is_empty() {
+            return;
+        }
+        if data.len() >= self.capacity {
+            // Single callback already overflows: keep only the tail.
+            self.samples.clear();
+            let start = data.len() - self.capacity;
+            self.samples.extend_from_slice(&data[start..]);
+            return;
+        }
+        let total = self.samples.len() + data.len();
+        if total > self.capacity {
+            let drop_n = total - self.capacity;
+            self.samples.drain(..drop_n);
+        }
+        self.samples.extend_from_slice(data);
+    }
 }
 
 impl Recorder {
@@ -44,8 +87,12 @@ impl Recorder {
         let sample_rate = config.sample_rate().0;
         let channels = config.channels();
         let stream_config: StreamConfig = config.config();
+        let capacity = (sample_rate as usize)
+            .saturating_mul(channels as usize)
+            .saturating_mul(MAX_BUFFERED_SECONDS);
         let inner = Arc::new(Mutex::new(Inner {
-            samples: Vec::with_capacity(sample_rate as usize * 4),
+            samples: Vec::with_capacity((sample_rate as usize).saturating_mul(4)),
+            capacity,
         }));
         let inner_for_cb = inner.clone();
 
@@ -55,35 +102,43 @@ impl Recorder {
             SampleFormat::F32 => device.build_input_stream(
                 &stream_config,
                 move |data: &[f32], _| {
-                    inner_for_cb.lock().samples.extend_from_slice(data);
+                    inner_for_cb.lock().push_capped(data);
                 },
                 err_fn,
                 None,
             ),
-            SampleFormat::I16 => device.build_input_stream(
-                &stream_config,
-                move |data: &[i16], _| {
-                    let mut guard = inner_for_cb.lock();
-                    guard.samples.reserve(data.len());
-                    for &s in data {
-                        guard.samples.push(s as f32 / i16::MAX as f32);
-                    }
-                },
-                err_fn,
-                None,
-            ),
-            SampleFormat::U16 => device.build_input_stream(
-                &stream_config,
-                move |data: &[u16], _| {
-                    let mut guard = inner_for_cb.lock();
-                    guard.samples.reserve(data.len());
-                    for &s in data {
-                        guard.samples.push((s as f32 / u16::MAX as f32) * 2.0 - 1.0);
-                    }
-                },
-                err_fn,
-                None,
-            ),
+            SampleFormat::I16 => {
+                // `scratch` is owned by the closure and reused across
+                // callbacks, so the audio thread doesn't heap-allocate a
+                // fresh buffer on every block.
+                let mut scratch: Vec<f32> = Vec::new();
+                device.build_input_stream(
+                    &stream_config,
+                    move |data: &[i16], _| {
+                        scratch.clear();
+                        scratch.extend(data.iter().map(|&s| s as f32 / i16::MAX as f32));
+                        inner_for_cb.lock().push_capped(&scratch);
+                    },
+                    err_fn,
+                    None,
+                )
+            }
+            SampleFormat::U16 => {
+                let mut scratch: Vec<f32> = Vec::new();
+                device.build_input_stream(
+                    &stream_config,
+                    move |data: &[u16], _| {
+                        scratch.clear();
+                        scratch.extend(
+                            data.iter()
+                                .map(|&s| (s as f32 / u16::MAX as f32) * 2.0 - 1.0),
+                        );
+                        inner_for_cb.lock().push_capped(&scratch);
+                    },
+                    err_fn,
+                    None,
+                )
+            }
             fmt => return Err(RecorderError::UnsupportedFormat(fmt)),
         }
         .map_err(|e| RecorderError::Cpal(e.to_string()))?;
@@ -158,4 +213,51 @@ pub fn list_input_devices() -> Result<Vec<MicrophoneInfo>, RecorderError> {
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Inner;
+
+    #[test]
+    fn push_capped_below_capacity_appends() {
+        let mut inner = Inner {
+            samples: Vec::new(),
+            capacity: 10,
+        };
+        inner.push_capped(&[1.0, 2.0, 3.0]);
+        inner.push_capped(&[4.0, 5.0]);
+        assert_eq!(inner.samples, vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+    }
+
+    #[test]
+    fn push_capped_drops_oldest_when_exceeding() {
+        let mut inner = Inner {
+            samples: vec![1.0, 2.0, 3.0, 4.0, 5.0],
+            capacity: 6,
+        };
+        inner.push_capped(&[6.0, 7.0, 8.0]);
+        // 5 + 3 = 8 samples but capacity is 6 → drop 2 oldest.
+        assert_eq!(inner.samples, vec![3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
+    }
+
+    #[test]
+    fn push_capped_single_callback_larger_than_capacity_keeps_tail() {
+        let mut inner = Inner {
+            samples: vec![0.0, 0.0],
+            capacity: 4,
+        };
+        inner.push_capped(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        assert_eq!(inner.samples, vec![3.0, 4.0, 5.0, 6.0]);
+    }
+
+    #[test]
+    fn push_capped_empty_is_noop() {
+        let mut inner = Inner {
+            samples: vec![1.0, 2.0],
+            capacity: 4,
+        };
+        inner.push_capped(&[]);
+        assert_eq!(inner.samples, vec![1.0, 2.0]);
+    }
 }

@@ -206,34 +206,13 @@ impl Polisher for AppleIntelligencePolisher {
         let out = self.exchange(&system, &user).await?;
         let elapsed = started.elapsed().as_millis();
         let trimmed = out.trim();
-        // Log raw and polished side-by-side so the dev log shows exactly
-        // what the model produced, even when sanity_check later rejects.
-        // Escape newlines so multi-line bullet output doesn't break the
-        // log into multiple visually-confusing lines; truncated to
-        // 300 chars each to keep the log readable.
-        let snip = |s: &str| {
-            let escaped: String = s
-                .chars()
-                .map(|c| match c {
-                    '\n' => "\\n".to_string(),
-                    '\r' => "\\r".to_string(),
-                    c => c.to_string(),
-                })
-                .collect();
-            if escaped.len() <= 300 {
-                escaped
-            } else {
-                let mut cut = 300;
-                while !escaped.is_char_boundary(cut) {
-                    cut -= 1;
-                }
-                format!("{}…", &escaped[..cut])
-            }
-        };
+        // Privacy: never log transcript content (raw or polished). The
+        // dictated text is sensitive by definition — we only record
+        // timing and length so dev logs / crash reports can't leak it.
         tracing::info!(
             elapsed_ms = elapsed as u64,
-            raw = %snip(raw),
-            polished = %snip(trimmed),
+            raw_chars = raw.chars().count(),
+            polished_chars = trimmed.chars().count(),
             "apple-polish result"
         );
         if trimmed.is_empty() {

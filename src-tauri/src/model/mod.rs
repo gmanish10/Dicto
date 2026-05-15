@@ -80,8 +80,9 @@ pub fn verify(path: &Path, expected_hex: &str) -> Result<(), ModelError> {
 /// Generic download helper. Streams a file from `url` to the user models dir
 /// at `filename`, reporting (bytes_downloaded, total_bytes) via `progress`.
 /// If `expected_sha256` is `Some(..)` and non-empty, the file is verified
-/// after download; on mismatch the partial file is left in place for
-/// debugging.
+/// after download; on mismatch the partial file is deleted so a retry
+/// starts from a clean state and a corrupt artifact can't be picked up
+/// by accident.
 pub async fn download_file(
     app: &AppHandle,
     url: &str,
@@ -107,17 +108,31 @@ pub async fn download_file(
     let mut stream = response.bytes_stream();
     let mut file = std::fs::File::create(&tmp)?;
     let mut downloaded: u64 = 0;
-    while let Some(chunk) = stream.next().await {
-        let bytes = chunk.map_err(|e| ModelError::Network(e.to_string()))?;
-        file.write_all(&bytes)?;
-        downloaded += bytes.len() as u64;
-        progress(downloaded, total);
+    let stream_result: Result<(), ModelError> = async {
+        while let Some(chunk) = stream.next().await {
+            let bytes = chunk.map_err(|e| ModelError::Network(e.to_string()))?;
+            file.write_all(&bytes)?;
+            downloaded += bytes.len() as u64;
+            progress(downloaded, total);
+        }
+        Ok(())
     }
+    .await;
     drop(file);
+
+    if let Err(e) = stream_result {
+        // Don't leave a half-written file behind. Best-effort delete;
+        // we already have the real error to return.
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
 
     if let Some(sha) = expected_sha256 {
         if !sha.is_empty() {
-            verify(&tmp, sha)?;
+            if let Err(e) = verify(&tmp, sha) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(e);
+            }
         }
     }
     std::fs::rename(&tmp, &dest)?;

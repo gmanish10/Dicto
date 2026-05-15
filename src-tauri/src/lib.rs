@@ -35,7 +35,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        // NOTE: we deliberately don't use tauri_plugin_global_shortcut.
+        // The custom CGEventTap in `hotkey/mac_tap.rs` handles
+        // modifier-only chords (Fn, Right Option) that the plugin's
+        // Carbon-based listener can't observe.
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();

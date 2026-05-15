@@ -17,9 +17,10 @@ pub const MODELS: &[ModelEntry] = &[
         name: "ggml-base.en",
         display_name: "Base (English) — fastest, 150 MB",
         size_mb: 150,
-        // NOTE: Real SHA-256 values must be looked up at packaging time and
-        // committed alongside the model bin. Leaving empty disables verification
-        // for that entry; production builds should populate these.
+        // NOTE: only `ggml-small.en` is bundled today. The other entries
+        // are reserved for in-app downloads which aren't wired up yet;
+        // when they are, populate `sha256` (and keep `scripts/models.sha256`
+        // in sync) so `download_file` can verify post-download.
         sha256: "",
         bundled: false,
         english_only: true,
@@ -28,7 +29,10 @@ pub const MODELS: &[ModelEntry] = &[
         name: "ggml-small.en",
         display_name: "Small (English) — recommended, 250 MB",
         size_mb: 250,
-        sha256: "",
+        // SHA-256 of the upstream `ggml-small.en.bin` artifact published
+        // by ggerganov on Hugging Face. Keep in sync with
+        // `scripts/models.sha256`.
+        sha256: "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
         bundled: true,
         english_only: true,
     },
@@ -44,4 +48,32 @@ pub const MODELS: &[ModelEntry] = &[
 
 pub fn find(name: &str) -> Option<&'static ModelEntry> {
     MODELS.iter().find(|m| m.name == name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Anything we ship inside the bundle must have a verifiable SHA-256.
+    /// If you mark a new model `bundled: true`, populate its `sha256` (and
+    /// add it to `scripts/models.sha256` so `fetch-model.sh` can check the
+    /// download before it lands in `resources/models/`).
+    #[test]
+    fn bundled_models_have_sha256() {
+        for entry in MODELS {
+            if entry.bundled {
+                assert!(
+                    !entry.sha256.is_empty(),
+                    "bundled model `{}` has no SHA-256 in manifest.rs",
+                    entry.name
+                );
+                assert_eq!(
+                    entry.sha256.len(),
+                    64,
+                    "bundled model `{}` SHA-256 must be 64 hex chars",
+                    entry.name
+                );
+            }
+        }
+    }
 }

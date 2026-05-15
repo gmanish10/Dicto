@@ -17,7 +17,6 @@
     "dialog:default",
     "opener:default",
     "updater:default",
-    "global-shortcut:default",
     "notification:default"
   ]
 }

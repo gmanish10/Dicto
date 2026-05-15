@@ -72,7 +72,9 @@ fn replace_whole_word(
                 continue;
             }
         }
-        let ch = remaining.chars().next().unwrap();
+        let Some(ch) = remaining.chars().next() else {
+            break;
+        };
         out.push(ch);
         i += ch.len_utf8();
     }

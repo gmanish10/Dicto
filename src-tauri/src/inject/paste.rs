@@ -1,4 +1,7 @@
 use super::{InjectError, Injector};
+use crossbeam_channel::{unbounded, Sender};
+use once_cell::sync::Lazy;
+use std::time::{Duration, Instant};
 
 /// Inject text into the focused app by:
 /// 1. Snapshot the current clipboard.
@@ -6,6 +9,65 @@ use super::{InjectError, Injector};
 /// 3. Synthesize Cmd+V via raw CGEvent (thread-safe; no TSM involvement).
 /// 4. Restore the clipboard after a short delay unless the user changed it.
 pub struct ClipboardPasteInjector;
+
+/// Write `text` to the system clipboard without synthesizing a paste.
+/// Used by the dictation pipeline when the user has `auto_paste` off —
+/// the polished result still ends up on the clipboard so they can paste
+/// manually, but Cmd+V isn't fired into whatever app is frontmost.
+pub fn copy_to_clipboard(text: &str) -> Result<(), InjectError> {
+    if text.is_empty() {
+        return Ok(());
+    }
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| InjectError::Clipboard(e.to_string()))?;
+    clipboard
+        .set_text(text.to_string())
+        .map_err(|e| InjectError::Clipboard(e.to_string()))?;
+    Ok(())
+}
+
+/// One queued clipboard-restore job: after `not_before` has elapsed,
+/// if the clipboard still contains `our_text`, replace it with `prior_text`.
+struct RestoreJob {
+    not_before: Instant,
+    our_text: String,
+    prior_text: String,
+}
+
+/// Shared sender to the single restore worker thread. Spawned lazily on
+/// first paste, never joins. Replaces the previous thread-per-paste
+/// pattern which created thread churn under frequent dictation.
+static RESTORE_TX: Lazy<Sender<RestoreJob>> = Lazy::new(|| {
+    let (tx, rx) = unbounded::<RestoreJob>();
+    std::thread::Builder::new()
+        .name("dicto-clipboard-restore".into())
+        .spawn(move || {
+            while let Ok(job) = rx.recv() {
+                let now = Instant::now();
+                if job.not_before > now {
+                    std::thread::sleep(job.not_before - now);
+                }
+                if let Ok(mut cb) = arboard::Clipboard::new() {
+                    if cb.get_text().ok().as_deref() == Some(job.our_text.as_str()) {
+                        let _ = cb.set_text(job.prior_text);
+                    }
+                }
+            }
+        })
+        .expect("failed to spawn clipboard-restore worker");
+    tx
+});
+
+/// Queue a clipboard restore on the shared worker. Cheap: just sends
+/// onto an unbounded channel.
+fn queue_clipboard_restore(our_text: String, prior_text: String) {
+    let job = RestoreJob {
+        not_before: Instant::now() + Duration::from_millis(200),
+        our_text,
+        prior_text,
+    };
+    let _ = RESTORE_TX.send(job);
+}
 
 impl Injector for ClipboardPasteInjector {
     fn inject(&self, text: &str) -> Result<(), InjectError> {
@@ -31,16 +93,11 @@ impl Injector for ClipboardPasteInjector {
 
         // Restore the previous clipboard contents on a short delay, but only if
         // the user didn't manually replace it during that window.
+        // A single long-lived worker thread (see `RESTORE_TX`) serializes
+        // every restore — under frequent dictation this is much cheaper
+        // than spawning one OS thread per utterance.
         if let Some(prior_text) = prior {
-            let our_text = text.to_string();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(200));
-                if let Ok(mut cb) = arboard::Clipboard::new() {
-                    if cb.get_text().ok().as_deref() == Some(our_text.as_str()) {
-                        let _ = cb.set_text(prior_text);
-                    }
-                }
-            });
+            queue_clipboard_restore(text.to_string(), prior_text);
         }
 
         Ok(())

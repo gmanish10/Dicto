@@ -456,12 +456,21 @@ async fn run_utterance(
         }
     }
 
-    // Inject into the focused app — unless onboarding is still in
-    // progress, in which case the Try-it step is showing the result
-    // inside Dicto's own window and we deliberately don't want to
-    // paste into whatever happens to be frontmost (typically a
-    // browser the user has open from reading the docs).
-    if state.config.read().onboarding_completed {
+    // Inject into the focused app — unless either:
+    //   1. onboarding is still in progress (the Try-it step shows the
+    //      result inside Dicto's own window; pasting into the user's
+    //      browser would be unwanted side-effect), or
+    //   2. the user has explicitly turned `auto_paste` off (privacy /
+    //      audit-the-result-first workflows). In that case we still
+    //      copy the polished text to the clipboard so the user can
+    //      paste it manually, and surface a toast.
+    let (onboarding_done, auto_paste) = {
+        let cfg = state.config.read();
+        (cfg.onboarding_completed, cfg.auto_paste)
+    };
+    if !onboarding_done {
+        tracing::debug!("onboarding active — skipping paste, Try-it panel will show result");
+    } else if auto_paste {
         let injector = ClipboardPasteInjector;
         match injector.inject(&injectable) {
             Ok(()) => {}
@@ -473,7 +482,14 @@ async fn run_utterance(
             Err(e) => return Err(e.into()),
         }
     } else {
-        tracing::debug!("onboarding active — skipping paste, Try-it panel will show result");
+        // Auto-paste disabled: copy without synthesizing Cmd+V.
+        match crate::inject::paste::copy_to_clipboard(&injectable) {
+            Ok(()) => {
+                let msg = "Copied to clipboard — auto-paste is off (turn on in Settings).";
+                let _ = app.emit("pipeline:toast", msg);
+            }
+            Err(e) => return Err(e.into()),
+        }
     }
 
     let polish_name = polisher.name();

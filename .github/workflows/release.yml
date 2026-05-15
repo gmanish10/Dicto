@@ -112,20 +112,30 @@ jobs:
           SIGNATURE="$(cat "${SIG_NAME}")"
           PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           URL="https://github.com/${{ github.repository }}/releases/download/${VERSION}/Dicto_${ARCH}.app.tar.gz"
+          NOTES="See https://github.com/${{ github.repository }}/releases/tag/${VERSION}"
 
-          cat > latest.json <<JSON
-          {
-            "version": "${VERSION_NUM}",
-            "notes": "See https://github.com/${{ github.repository }}/releases/tag/${VERSION}",
-            "pub_date": "${PUB_DATE}",
-            "platforms": {
-              "${PLATFORM_KEY}": {
-                "signature": "${SIGNATURE}",
-                "url": "${URL}"
+          # Use jq instead of heredoc interpolation so any odd characters
+          # in $SIGNATURE (newlines, embedded quotes, etc.) are escaped
+          # into valid JSON — heredoc-with-interpolation would silently
+          # produce malformed `latest.json` and break the auto-updater.
+          jq -n \
+            --arg version "${VERSION_NUM}" \
+            --arg notes "${NOTES}" \
+            --arg pub_date "${PUB_DATE}" \
+            --arg platform_key "${PLATFORM_KEY}" \
+            --arg signature "${SIGNATURE}" \
+            --arg url "${URL}" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pub_date,
+              platforms: {
+                ($platform_key): { signature: $signature, url: $url }
               }
-            }
-          }
-          JSON
+            }' > latest.json
+
+          # Confirm jq emitted valid JSON before we ship it.
+          jq -e . latest.json > /dev/null
 
           echo "Generated latest.json:"
           cat latest.json

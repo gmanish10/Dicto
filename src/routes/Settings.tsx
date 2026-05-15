@@ -125,6 +125,23 @@ export default function Settings() {
               </label>
             </div>
 
+            <div className="card">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={settings.auto_paste}
+                  onChange={(e) => update({ auto_paste: e.target.checked })}
+                />
+                <span>
+                  Auto-paste after dictation
+                  <span className="ml-2 text-xs text-ink-400">
+                    Paste the cleaned-up text straight into the focused app. Turn this off to only copy it to the clipboard — handy when you want to review the result before pasting it yourself.
+                  </span>
+                </span>
+              </label>
+            </div>
+
             <div className="card flex items-center justify-between">
               <div>
                 <h3 className="font-medium">Run onboarding again</h3>

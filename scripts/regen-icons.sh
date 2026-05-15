@@ -26,12 +26,17 @@ fi
 # user's global npm. Cheap on rerun thanks to npm's install cache. We
 # need a package.json in the dir for `npm install` to land
 # node_modules locally instead of walking up to a parent.
+#
+# Versions are pinned so the SVG → PNG render is byte-identical across
+# re-runs and machines. Bump these intentionally, not implicitly.
+RESVG_VERSION="2.6.2"
+TAURI_CLI_VERSION="2.11.1"
 RESVG_DIR="/tmp/dicto-icon-deps"
 if [[ ! -d "$RESVG_DIR/node_modules/@resvg/resvg-js" ]]; then
   mkdir -p "$RESVG_DIR"
   pushd "$RESVG_DIR" >/dev/null
   [[ -f package.json ]] || npm init -y >/dev/null
-  npm install --silent --no-save @resvg/resvg-js
+  npm install --silent --no-save "@resvg/resvg-js@${RESVG_VERSION}"
   popd >/dev/null
 fi
 
@@ -59,7 +64,7 @@ node -e "
 
 echo "Rendered logo to $PNG_FILE"
 echo "Running tauri icon..."
-npx --yes @tauri-apps/cli@latest icon --output src-tauri/icons "$PNG_FILE"
+npx --yes "@tauri-apps/cli@${TAURI_CLI_VERSION}" icon --output src-tauri/icons "$PNG_FILE"
 
 # Also overwrite the 1024 source PNG kept in the repo for posterity.
 cp "$PNG_FILE" src-tauri/icons/icon-1024.png

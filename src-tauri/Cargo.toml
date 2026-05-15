@@ -1,6 +1,6 @@
 [package]
 name = "dicto"
-version = "0.3.1"
+version = "0.3.2"
 description = "A free, open-source push-to-talk dictation app for macOS"
 authors = ["Dicto contributors"]
 edition = "2021"
@@ -12,17 +12,19 @@ name = "dicto_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.0", features = [] }
+tauri-build = { version = "2.6", features = [] }
 
 [dependencies]
-# Tauri
-tauri = { version = "2.1", features = ["macos-private-api", "tray-icon", "image-png"] }
-tauri-plugin-shell = "2"
-tauri-plugin-notification = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-opener = "2"
-tauri-plugin-updater = "2"
-tauri-plugin-global-shortcut = "2"
+# Tauri — kept aligned with `package.json` (JS API 2.11.x). Tight ranges
+# so a fresh `cargo build` can't silently pull a newer minor than what
+# CI validated. Upgrade JS + Rust together and re-test the full release
+# pipeline (model bundling, updater signature, sidecar handshake).
+tauri = { version = "2.11", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri-plugin-shell = "2.3"
+tauri-plugin-notification = "2.3"
+tauri-plugin-dialog = "2.7"
+tauri-plugin-opener = "2.5"
+tauri-plugin-updater = "2.10"
 
 # Async
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "process", "io-util"] }

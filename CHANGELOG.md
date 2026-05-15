@@ -6,6 +6,50 @@ All notable changes to Dicto are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-15
+
+Patch release: audio, model-download, and permissions hardening, plus an
+auto-paste toggle.
+
+### Install
+
+**👉 [Download Dicto_0.3.2_aarch64.dmg](https://github.com/gmanish10/Dicto/releases/download/v0.3.2/Dicto_0.3.2_aarch64.dmg)**
+
+Apple Silicon (M-series) only. Existing v0.1.2+ users get this via the built-in
+updater (About → Install and restart). First-time install: drag to `/Applications`,
+then `xattr -d com.apple.quarantine /Applications/Dicto.app` once.
+
+### Added
+- **Auto-paste toggle** (Settings → General). On by default; turn it off to
+  have Dicto only copy the cleaned-up text to the clipboard instead of
+  pasting it into the focused app — useful when you want to review the
+  result before pasting it yourself.
+
+### Changed
+- **Accessibility permission no longer shows a premature "denied" pill.**
+  After you click "Allow", Dicto now waits a few seconds before flagging the
+  permission as denied, so the normal "open System Settings, flip the
+  toggle" flow doesn't flash red mid-grant.
+
+### Removed
+- Unused `launch_at_login` and `telemetry_opted_in` settings fields. Dicto
+  has never had telemetry or a launch-at-login implementation; these were
+  dead config keys. Existing `settings.json` files are unaffected — the
+  stale keys are simply ignored.
+
+### Security
+- **The bundled whisper model is now SHA-256 verified.** `fetch-model.sh`
+  checks the downloaded model against a pinned hash (`scripts/models.sha256`)
+  and refuses to bundle a corrupt or tampered artifact.
+- **Apple Intelligence cleanup no longer logs transcript text.** Dev logs
+  record only timing and character counts, never the dictated content.
+- The in-memory recording buffer is now capped (~220 MB ceiling) so a stuck
+  hotkey can't grow it without bound.
+
+### Fixed
+- Interrupted or hash-mismatched model downloads are now deleted instead of
+  being left behind as partial files.
+
 ## [0.3.1] - 2026-05-15
 
 Patch release: four fixes flagged after testing v0.3.0, plus a complete visual restyle.
