@@ -12,6 +12,7 @@ use crate::{
 };
 use crossbeam_channel::{bounded, Sender};
 use parking_lot::RwLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -39,6 +40,16 @@ struct RecordedAudio {
     pcm: Vec<f32>,
     sample_rate: u32,
     channels: u16,
+}
+
+fn try_claim_utterance_slot(in_flight: &AtomicBool) -> bool {
+    in_flight
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
+fn release_utterance_slot(in_flight: &AtomicBool) {
+    in_flight.store(false, Ordering::Release);
 }
 
 /// Run the dedicated recorder thread. Owning the cpal `Stream` here keeps the
@@ -99,7 +110,6 @@ fn spawn_recorder_service() -> Sender<RecCommand> {
 /// the user has granted permissions inside step 2 — and the IPC fires
 /// from React, which can re-mount and retry.
 pub fn spawn_coordinator(app: AppHandle, state: SharedState) {
-    use std::sync::atomic::Ordering;
     if state
         .runtime_started
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -174,6 +184,7 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
     let state_for_loop = state.clone();
     let local_whisper_for_loop = local_whisper.clone();
     let recorder_for_loop = recorder_tx.clone();
+    let utterance_in_flight = Arc::new(AtomicBool::new(false));
 
     tauri::async_runtime::spawn(async move {
         let mut recording_started_at: Option<Instant> = None;
@@ -199,6 +210,10 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
                     if recording_started_at.is_some() {
                         continue;
                     }
+                    if !try_claim_utterance_slot(&utterance_in_flight) {
+                        tracing::debug!("utterance already in flight; ignoring hotkey down");
+                        continue;
+                    }
                     let preferred = state_for_loop.config.read().microphone_name.clone();
                     let (ack_tx, ack_rx) = bounded::<Result<(), String>>(1);
                     if recorder_for_loop
@@ -209,6 +224,7 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
                         .is_err()
                     {
                         tracing::error!("recorder service is gone");
+                        release_utterance_slot(&utterance_in_flight);
                         break;
                     }
                     let ack = tokio::task::spawn_blocking(move || {
@@ -231,10 +247,12 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
                             let _ = app_for_loop.emit("pipeline:recording-started", ());
                         }
                         Ok(Ok(Err(e))) => {
+                            release_utterance_slot(&utterance_in_flight);
                             tracing::error!(error = %e, "failed to start recorder");
                             let _ = app_for_loop.emit("pipeline:error", format!("Recorder: {e}"));
                         }
                         _ => {
+                            release_utterance_slot(&utterance_in_flight);
                             tracing::error!("recorder start ack timed out");
                         }
                     }
@@ -253,6 +271,7 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
                         .send(RecCommand::Stop { result: result_tx })
                         .is_err()
                     {
+                        release_utterance_slot(&utterance_in_flight);
                         break;
                     }
                     let audio = tokio::task::spawn_blocking(move || {
@@ -266,6 +285,7 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
                     .flatten();
 
                     let Some(audio) = audio else {
+                        release_utterance_slot(&utterance_in_flight);
                         state_for_loop.set_pipeline_state(PipelineState::Idle);
                         menubar::update_state_indicator(&app_for_loop, &state_for_loop);
                         continue;
@@ -274,6 +294,7 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
 
                     if duration.as_millis() < MIN_RECORDING_MS {
                         tracing::debug!(ms = duration.as_millis(), "recording too short, ignored");
+                        release_utterance_slot(&utterance_in_flight);
                         state_for_loop.set_pipeline_state(PipelineState::Idle);
                         menubar::update_state_indicator(&app_for_loop, &state_for_loop);
                         continue;
@@ -309,6 +330,7 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
                         );
                         state_for_loop.set_pipeline_state(PipelineState::Idle);
                         menubar::update_state_indicator(&app_for_loop, &state_for_loop);
+                        release_utterance_slot(&utterance_in_flight);
                         continue;
                     }
 
@@ -320,6 +342,7 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
                     let state_clone = state_for_loop.clone();
                     let local_whisper_clone = local_whisper_for_loop.clone();
                     let target_for_run = paste_target.take();
+                    let utterance_in_flight_clone = utterance_in_flight.clone();
                     tauri::async_runtime::spawn(async move {
                         if let Err(err) = run_utterance(
                             app_clone.clone(),
@@ -339,6 +362,7 @@ fn spawn_coordinator_inner(app: AppHandle, state: SharedState) {
                         state_clone.set_pipeline_state(PipelineState::Idle);
                         menubar::update_state_indicator(&app_clone, &state_clone);
                         let _ = app_clone.emit("pipeline:idle", ());
+                        release_utterance_slot(&utterance_in_flight_clone);
                     });
                 }
             }
@@ -518,5 +542,21 @@ impl Transcriber for LocalWhisperHandle {
     }
     fn requires_network(&self) -> bool {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn utterance_slot_rejects_overlap_until_released() {
+        let in_flight = AtomicBool::new(false);
+
+        assert!(try_claim_utterance_slot(&in_flight));
+        assert!(!try_claim_utterance_slot(&in_flight));
+
+        release_utterance_slot(&in_flight);
+        assert!(try_claim_utterance_slot(&in_flight));
     }
 }
