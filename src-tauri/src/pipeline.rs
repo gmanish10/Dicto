@@ -443,6 +443,33 @@ async fn run_utterance(
     // the un-suffixed `final_text` for clean re-reads.
     let injectable = crate::inject::format_for_injection(&final_text);
 
+    // Persist the completed transcript before any best-effort delivery
+    // step. Clipboard writes / synthetic Cmd+V can fail for reasons outside
+    // Dicto's control; those failures must not make a successfully
+    // transcribed utterance disappear from History or the onboarding Try-it
+    // panel.
+    let polish_name = polisher.name();
+    let id = state.history.insert_transcript(
+        &raw,
+        &final_text,
+        duration_ms,
+        &stt_name,
+        Some(polish_name),
+    )?;
+    let _ = state.history.prune_to(200);
+
+    let _ = app.emit(
+        "transcript:new",
+        serde_json::json!({
+            "id": id,
+            "raw": raw,
+            "polished": final_text,
+            "stt_provider": stt_name,
+            "polish_provider": polish_name,
+            "duration_ms": duration_ms,
+        }),
+    );
+
     // Refocus the app the user was in when they triggered the hotkey,
     // then give macOS a beat to process the activation before we post
     // Cmd+V. Without this, long transcribe/polish times let focus drift
@@ -490,28 +517,6 @@ async fn run_utterance(
             Err(e) => return Err(e.into()),
         }
     }
-
-    let polish_name = polisher.name();
-    let id = state.history.insert_transcript(
-        &raw,
-        &final_text,
-        duration_ms,
-        &stt_name,
-        Some(polish_name),
-    )?;
-    let _ = state.history.prune_to(200);
-
-    let _ = app.emit(
-        "transcript:new",
-        serde_json::json!({
-            "id": id,
-            "raw": raw,
-            "polished": final_text,
-            "stt_provider": stt_name,
-            "polish_provider": polish_name,
-            "duration_ms": duration_ms,
-        }),
-    );
 
     Ok(())
 }
