@@ -79,18 +79,18 @@ jobs:
           # Updater (minisign) signing — distinct from Apple code signing below.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Apple Developer ID code signing + notarization. tauri-action
-          # imports the cert into a temp keychain, signs the .app/.dmg with
-          # the hardened runtime (entitlements from src-tauri/entitlements.plist),
-          # then notarizes and staples. If these secrets are unset the build
-          # still succeeds — unsigned — so this is safe to land before the
-          # secrets exist. See the signing steps in the repo README / docs.
+          # Apple Developer ID code signing — tauri-action imports the cert
+          # and signs the .app/.dmg with the hardened runtime (entitlements
+          # from src-tauri/entitlements.plist). NOTARIZATION is deliberately
+          # NOT done here: withholding APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID
+          # makes tauri-action skip it. tauri's built-in notarize does a
+          # single un-retried status poll that dies if a transient runner
+          # network blip (`-1009`) lands during Apple's (often long) wait —
+          # which failed three release builds. The "Notarize & staple" step
+          # below does it resiliently: submit once, retry the poll.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Dicto ${{ github.ref_name }}"
@@ -98,6 +98,71 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
+
+      # tauri-action (above) builds + signs but does NOT notarize. Do it
+      # here, resiliently: submit the .dmg to Apple's notary service ONCE,
+      # then poll the submission status in a loop that simply retries on a
+      # transient network blip (no re-submit) — the failure mode that broke
+      # tauri's built-in single-shot --wait three times. Then staple the
+      # notarization ticket onto the .dmg and re-upload it over the draft
+      # release. (The .app.tar.gz updater payload isn't re-stapled: its app
+      # shares the cdhash notarized via the .dmg submission, so Gatekeeper's
+      # online check passes it.)
+      - name: Notarize & staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          DMG=$(ls src-tauri/target/"${TARGET}"/release/bundle/dmg/*.dmg)
+          echo "Notarizing ${DMG}"
+          CREDS=(--apple-id "${APPLE_ID}" --password "${APPLE_PASSWORD}" --team-id "${APPLE_TEAM_ID}")
+
+          # Submit once. Retry only the upload itself on a network blip.
+          SUBMIT_ID=""
+          for attempt in 1 2 3 4 5; do
+            OUT=$(xcrun notarytool submit "${DMG}" "${CREDS[@]}" --no-wait --output-format json 2>&1) || OUT=""
+            SUBMIT_ID=$(echo "${OUT}" | jq -r '.id // empty' 2>/dev/null || true)
+            if [[ -n "${SUBMIT_ID}" ]]; then break; fi
+            echo "submit attempt ${attempt} failed; retrying in 30s…"
+            sleep 30
+          done
+          if [[ -z "${SUBMIT_ID}" ]]; then
+            echo "ERROR: notarization submit failed after retries" >&2
+            exit 1
+          fi
+          echo "Submission ID: ${SUBMIT_ID}"
+
+          # Poll the status. A network blip yields an empty status and the
+          # loop simply retries — no re-submit. Apple's notary can be slow,
+          # so allow a generous window (up to 90 min).
+          STATUS=""
+          for i in $(seq 1 180); do
+            STATUS=$(xcrun notarytool info "${SUBMIT_ID}" "${CREDS[@]}" --output-format json 2>/dev/null | jq -r '.status' 2>/dev/null || true)
+            echo "[poll ${i}] status: ${STATUS:-<network blip — retrying>}"
+            case "${STATUS}" in
+              Accepted) break ;;
+              Invalid|Rejected)
+                echo "ERROR: notarization ${STATUS}" >&2
+                xcrun notarytool log "${SUBMIT_ID}" "${CREDS[@]}" || true
+                exit 1 ;;
+              *) sleep 30 ;;
+            esac
+          done
+          if [[ "${STATUS}" != "Accepted" ]]; then
+            echo "ERROR: notarization didn't finish in the allotted window (last: ${STATUS})" >&2
+            exit 1
+          fi
+
+          xcrun stapler staple "${DMG}"
+          xcrun stapler validate "${DMG}"
+          gh release upload "${VERSION}" "${DMG}" --clobber --repo "${REPO}"
+          echo "✓ notarized + stapled + re-uploaded ${DMG}"
 
       # tauri-action uploads the .dmg and the .app.tar.gz but NOT the .sig
       # file or a latest.json manifest — so the in-app auto-updater can't
