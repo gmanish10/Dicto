@@ -139,10 +139,12 @@ jobs:
           echo "Submission ID: ${SUBMIT_ID}"
 
           # Poll the status. A network blip yields an empty status and the
-          # loop simply retries — no re-submit. Apple's notary can be slow,
-          # so allow a generous window (up to 90 min).
+          # loop simply retries — no re-submit. Apple's notary has been
+          # severely slow (90+ min and still "In Progress" on a bad day),
+          # so allow a very generous window — up to ~4 h. The GitHub job
+          # cap is 6 h, leaving headroom for the compile.
           STATUS=""
-          for i in $(seq 1 180); do
+          for i in $(seq 1 480); do
             STATUS=$(xcrun notarytool info "${SUBMIT_ID}" "${CREDS[@]}" --output-format json 2>/dev/null | jq -r '.status' 2>/dev/null || true)
             echo "[poll ${i}] status: ${STATUS:-<network blip — retrying>}"
             case "${STATUS}" in
