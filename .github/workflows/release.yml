@@ -75,11 +75,21 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Code signing intentionally not configured for v1; binaries are unsigned.
-          # When you're ready, add APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
-          # APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_TEAM_ID, APPLE_PASSWORD secrets.
+          # Updater (minisign) signing — distinct from Apple code signing below.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Apple Developer ID code signing + notarization. tauri-action
+          # imports the cert into a temp keychain, signs the .app/.dmg with
+          # the hardened runtime (entitlements from src-tauri/entitlements.plist),
+          # then notarizes and staples. If these secrets are unset the build
+          # still succeeds — unsigned — so this is safe to land before the
+          # secrets exist. See the signing steps in the repo README / docs.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Dicto ${{ github.ref_name }}"
