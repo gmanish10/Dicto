@@ -6,6 +6,23 @@ All notable changes to Dicto are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-05-16
+
+Signed & notarized builds — no more Gatekeeper workaround.
+
+### Install
+
+**👉 [Download Dicto_0.3.5_aarch64.dmg](https://github.com/gmanish10/Dicto/releases/download/v0.3.5/Dicto_0.3.5_aarch64.dmg)**
+
+Apple Silicon (M-series) only. Existing v0.1.2+ users get this via the built-in
+updater (About → Install and restart). First-time install: open the `.dmg` and
+drag `Dicto.app` to `/Applications`.
+
+### Changed
+- **Builds are now code-signed and notarized.** Dicto is signed with an Apple
+  Developer ID certificate and notarized by Apple, so macOS Gatekeeper opens it
+  normally — the `xattr -d com.apple.quarantine` workaround is no longer needed.
+
 ## [0.3.4] - 2026-05-15
 
 Patch release: onboarding and permission-flow fixes, plus UI cleanup.

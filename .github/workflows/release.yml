@@ -93,7 +93,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Dicto ${{ github.ref_name }}"
-          releaseBody: "See CHANGELOG.md for details. Unsigned build: run `xattr -d com.apple.quarantine /Applications/Dicto.app` after dragging to Applications."
+          releaseBody: "See CHANGELOG.md for details. Signed and notarized — drag Dicto.app to Applications and open it."
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}

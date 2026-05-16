@@ -1,6 +1,6 @@
 [package]
 name = "dicto"
-version = "0.3.4"
+version = "0.3.5"
 description = "A free, open-source push-to-talk dictation app for macOS"
 authors = ["Dicto contributors"]
 edition = "2021"
