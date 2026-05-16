@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
-# Download the default whisper.cpp model into src-tauri/resources/models so the
-# Tauri bundler can include it. Run this before `npx tauri build`.
+# Pre-seed the default whisper.cpp model into Dicto's app-data models dir.
+#
+# The model is NO LONGER bundled in the `.app` — the app auto-downloads it
+# on first launch. This script is a dev convenience only: run it to put the
+# model on disk ahead of time so `npx tauri dev` skips the first-run
+# download. It is NOT required before `npx tauri build`.
 #
 # After download, the file is verified against the SHA-256 in
 # `scripts/models.sha256`. A missing hash entry, a mismatch, or a network
-# error fails the script and removes the partial download. This prevents
-# a corrupted or tampered artifact from silently getting bundled into a
-# release.
+# error fails the script and removes the partial download.
 set -euo pipefail
 
 MODEL="${1:-ggml-small.en}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEST_DIR="$ROOT/src-tauri/resources/models"
+# Mirror the runtime path: `model::user_models_dir` resolves the model from
+# `~/Library/Application Support/com.dicto.app/models/`.
+DEST_DIR="$HOME/Library/Application Support/com.dicto.app/models"
 HASHES_FILE="$SCRIPT_DIR/models.sha256"
 mkdir -p "$DEST_DIR"
 

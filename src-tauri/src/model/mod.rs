@@ -156,3 +156,47 @@ pub async fn download(
     };
     download_file(app, &url, &filename, sha, progress).await
 }
+
+/// Download and install the CoreML encoder for a whisper model.
+///
+/// whisper.cpp picks up CoreML acceleration by finding a directory named
+/// `<model>-encoder.mlmodelc/` next to the `.bin`. Upstream publishes that
+/// directory as a `.zip`; we fetch the zip into the user models dir, unzip
+/// it in place (so the `.mlmodelc` lands beside the `.bin`), then delete
+/// the zip. Extraction uses `/usr/bin/unzip` so we don't pull in a crate.
+///
+/// `expected_sha256` (when non-empty) verifies the zip before extraction.
+pub async fn download_encoder(
+    app: &AppHandle,
+    model_name: &str,
+    expected_sha256: &str,
+    progress: impl FnMut(u64, u64),
+) -> Result<(), ModelError> {
+    let url = format!(
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{model_name}-encoder.mlmodelc.zip"
+    );
+    let zip_name = format!("{model_name}-encoder.mlmodelc.zip");
+    let sha = if expected_sha256.is_empty() {
+        None
+    } else {
+        Some(expected_sha256)
+    };
+    let zip_path = download_file(app, &url, &zip_name, sha, progress).await?;
+
+    let user_dir = user_models_dir(app)?;
+    let status = std::process::Command::new("/usr/bin/unzip")
+        .arg("-oq")
+        .arg(&zip_path)
+        .arg("-d")
+        .arg(&user_dir)
+        .status()
+        .map_err(ModelError::Io)?;
+    // The zip is no longer needed once extracted, regardless of result.
+    let _ = std::fs::remove_file(&zip_path);
+    if !status.success() {
+        return Err(ModelError::Io(std::io::Error::other(format!(
+            "unzip failed for {zip_name}"
+        ))));
+    }
+    Ok(())
+}

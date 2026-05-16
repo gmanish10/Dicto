@@ -81,6 +81,34 @@ pub fn run() {
                 );
             }
 
+            // The whisper speech model is no longer bundled in the `.app`.
+            // On any launch where the STT provider is Local and the model
+            // file is absent, kick off the background download now — while
+            // the user is still on onboarding — so it's ready by the time
+            // they want to dictate. One mechanism covers fresh installs
+            // and existing users updating off a bundled build. The UI
+            // shows passive progress only; there is no download button.
+            {
+                let cfg = app_state.config.read().clone();
+                if cfg.stt_provider == config::SttProvider::Local
+                    && model::resolve_path(&handle, &cfg.model_name).is_err()
+                {
+                    tracing::info!(
+                        model = %cfg.model_name,
+                        "speech model absent — starting background download"
+                    );
+                    let handle_for_dl = handle.clone();
+                    let state_for_dl = app_state.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(e) =
+                            commands::run_model_download(handle_for_dl, state_for_dl).await
+                        {
+                            tracing::warn!(error = %e, "background model download failed");
+                        }
+                    });
+                }
+            }
+
             // Always show the main window on launch — easier to find than hunting
             // for the tray icon. Subsequent shows happen via tray clicks.
             if let Some(window) = handle.get_webview_window("main") {
@@ -117,6 +145,8 @@ pub fn run() {
             commands::install_pending_update,
             commands::check_polish_availability,
             commands::start_polish_model_download,
+            commands::check_model_availability,
+            commands::start_model_download,
             commands::record_correction,
             commands::open_main_window,
             commands::finish_onboarding,

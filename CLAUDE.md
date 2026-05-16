@@ -14,7 +14,9 @@ All Rust commands run from `src-tauri/`; all npm commands from the repo root.
 
 ```bash
 npm install                              # JS deps
-./scripts/fetch-model.sh ggml-small.en   # one-time: ~250 MB whisper model into src-tauri/resources/models
+./scripts/fetch-model.sh ggml-small.en   # optional dev convenience: pre-seed the
+                                         # ~633 MB whisper model into the app-data
+                                         # models dir so `tauri dev` skips the first-run download
 npx tauri dev                            # run the app (spawns vite + cargo)
 npx tauri build                          # release .dmg → src-tauri/target/release/bundle/dmg/
 
@@ -29,8 +31,11 @@ cargo test --features no-whisper            # run tests without linking whisper.
 cargo test polish::local_lite::tests        # single test module
 ```
 
-`fetch-model.sh` must run before `tauri build` — the model is bundled as a
-resource and the bundler fails without it.
+The whisper model is **not** bundled in the `.app`. The app auto-downloads
+it (~633 MB: weights + CoreML encoder) on first launch into the app-data
+models dir — so `fetch-model.sh` is no longer required before `tauri build`.
+Running it is an optional dev convenience that pre-seeds the model so a
+`tauri dev` session skips the first-run download.
 
 ## Releasing
 

@@ -98,6 +98,13 @@ export interface PolishAvailability {
   apple_intelligence: AppleIntelligenceStatus;
 }
 
+export interface ModelAvailability {
+  /** True when the local whisper model file is on disk. */
+  installed: boolean;
+  /** Non-null while the model download is in flight. */
+  downloading: DownloadProgress | null;
+}
+
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   setSettings: (settings: Settings) => invoke<void>("set_settings", { settings }),
@@ -130,6 +137,8 @@ export const api = {
   installPendingUpdate: () => invoke<void>("install_pending_update"),
   checkPolishAvailability: () => invoke<PolishAvailability>("check_polish_availability"),
   startPolishModelDownload: () => invoke<void>("start_polish_model_download"),
+  checkModelAvailability: () => invoke<ModelAvailability>("check_model_availability"),
+  startModelDownload: () => invoke<void>("start_model_download"),
   recordCorrection: (raw: string, finalText: string) =>
     invoke<void>("record_correction", { raw, finalText }),
   openMainWindow: () => invoke<void>("open_main_window"),

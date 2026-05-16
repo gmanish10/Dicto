@@ -51,8 +51,9 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
-      - name: Download whisper model
-        run: ./scripts/fetch-model.sh ggml-small.en
+      # The whisper speech model is no longer bundled in the `.app` — it
+      # auto-downloads on first launch into the app-data models dir. This
+      # keeps the `.dmg` / updater payload small so notarization is fast.
 
       # The Apple Intelligence sidecar (`dicto-apple-polish`) is checked
       # in at each release tag because GitHub Actions macOS runners

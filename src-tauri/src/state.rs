@@ -28,6 +28,11 @@ pub struct AppState {
     /// refuse concurrent downloads. Written by the download task,
     /// snapshotted by `check_polish_availability`.
     pub polish_model_download: RwLock<Option<crate::commands::DownloadProgress>>,
+    /// In-flight whisper speech-model download. `Some` while downloading
+    /// (weights then CoreML encoder) so the UI can show passive progress
+    /// and `run_model_download` can refuse concurrent runs. Written by the
+    /// download task, snapshotted by `check_model_availability`.
+    pub model_download: RwLock<Option<crate::commands::DownloadProgress>>,
     /// rdev producer side (set by hotkey::listener when it starts).
     pub hotkey_tx: Sender<HotkeyEvent>,
     pub hotkey_rx: Receiver<HotkeyEvent>,
@@ -57,6 +62,7 @@ impl AppState {
             history,
             polish_ctx: RwLock::new(PolishContext::empty()),
             polish_model_download: RwLock::new(None),
+            model_download: RwLock::new(None),
             hotkey_tx: tx,
             hotkey_rx: rx,
             runtime_started: AtomicBool::new(false),

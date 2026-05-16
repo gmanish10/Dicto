@@ -387,3 +387,111 @@ pub async fn start_polish_model_download(
         }
     }
 }
+
+// -- Whisper speech-model availability + auto-download --------------------
+
+/// Front-end-facing snapshot of the local whisper model's state. The model
+/// is no longer bundled in the `.app`; it auto-downloads on first launch.
+/// The UI uses this purely for a *passive* status line — there is no
+/// user-facing download button anywhere.
+#[derive(Serialize)]
+pub struct ModelAvailability {
+    /// True when `ggml-small.en.bin` resolves on disk.
+    pub installed: bool,
+    /// `Some` while a download is in flight, `None` otherwise.
+    pub downloading: Option<DownloadProgress>,
+}
+
+#[tauri::command]
+pub fn check_model_availability(
+    state: State<'_, SharedState>,
+    app: AppHandle,
+) -> ModelAvailability {
+    let model_name = state.config.read().model_name.clone();
+    let installed = crate::model::resolve_path(&app, &model_name).is_ok();
+    let downloading = *state.model_download.read();
+    ModelAvailability {
+        installed,
+        downloading,
+    }
+}
+
+/// Download the local whisper model — weights then CoreML encoder —
+/// emitting `model:download-{progress,complete,failed}` events and
+/// updating `state.model_download`. Refuses to run if a download is
+/// already in flight.
+///
+/// This is a plain async fn (not a `#[tauri::command]`) so the launch
+/// auto-trigger in `lib.rs` can call it directly without going through
+/// the IPC layer. `start_model_download` is the thin command wrapper.
+pub async fn run_model_download(app: AppHandle, state: SharedState) -> Result<(), String> {
+    // Refuse if a download is already in flight.
+    {
+        let guard = state.model_download.read();
+        if guard.is_some() {
+            return Err("a download is already running".into());
+        }
+    }
+    *state.model_download.write() = Some(DownloadProgress { bytes: 0, total: 0 });
+
+    let model_name = state.config.read().model_name.clone();
+    let entry = crate::model::manifest::find(&model_name);
+    let bin_sha = entry.map(|e| e.sha256).unwrap_or("");
+    let encoder_sha = entry.map(|e| e.encoder_sha256).unwrap_or("");
+
+    let progress = {
+        let app = app.clone();
+        let state = state.clone();
+        move |bytes: u64, total: u64| {
+            let p = DownloadProgress { bytes, total };
+            *state.model_download.write() = Some(p);
+            let _ = app.emit("model:download-progress", p);
+        }
+    };
+
+    // 1. The GGML weights (~465 MB).
+    let bin_result = crate::model::download(&app, &model_name, bin_sha, progress).await;
+    if let Err(e) = bin_result {
+        *state.model_download.write() = None;
+        let msg = format!("model download failed: {e}");
+        let _ = app.emit("model:download-failed", msg.clone());
+        return Err(msg);
+    }
+
+    // 2. The CoreML encoder (~168 MB). Best-effort: whisper.cpp still runs
+    //    on Metal/CPU without it, so an encoder failure isn't fatal — but
+    //    we still surface it so a retry next launch can complete the set.
+    let encoder_progress = {
+        let app = app.clone();
+        let state = state.clone();
+        move |bytes: u64, total: u64| {
+            let p = DownloadProgress { bytes, total };
+            *state.model_download.write() = Some(p);
+            let _ = app.emit("model:download-progress", p);
+        }
+    };
+    let encoder_result =
+        crate::model::download_encoder(&app, &model_name, encoder_sha, encoder_progress).await;
+
+    *state.model_download.write() = None;
+
+    if let Err(e) = encoder_result {
+        let msg = format!("model encoder download failed: {e}");
+        let _ = app.emit("model:download-failed", msg.clone());
+        return Err(msg);
+    }
+
+    let _ = app.emit("model:download-complete", ());
+    Ok(())
+}
+
+/// Thin IPC wrapper around `run_model_download`. App-invoked only — there
+/// is no user-facing "download" button; the launch auto-trigger and a
+/// last-resort manual retry are the only callers.
+#[tauri::command]
+pub async fn start_model_download(
+    state: State<'_, SharedState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    run_model_download(app, state.inner().clone()).await
+}

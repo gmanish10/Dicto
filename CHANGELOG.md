@@ -8,7 +8,7 @@ All notable changes to Dicto are documented here. Format follows
 
 ## [0.3.5] - 2026-05-16
 
-Signed & notarized builds — no more Gatekeeper workaround.
+Signed & notarized builds, and a much smaller download.
 
 ### Install
 
@@ -22,6 +22,15 @@ drag `Dicto.app` to `/Applications`.
 - **Builds are now code-signed and notarized.** Dicto is signed with an Apple
   Developer ID certificate and notarized by Apple, so macOS Gatekeeper opens it
   normally — the `xattr -d com.apple.quarantine` workaround is no longer needed.
+- **The speech model is no longer bundled in the app.** The download shrinks
+  from ~700 MB to under 100 MB; the speech-recognition model (~633 MB) now
+  downloads automatically in the background the first time you open Dicto, with
+  progress shown during onboarding. Auto-updates are small too. Nothing to
+  click — it's fetched for you.
+
+### Fixed
+- The onboarding **"Allow" button for Input Monitoring** now reliably opens the
+  right System Settings pane, with Dicto already listed.
 
 ## [0.3.4] - 2026-05-15
 

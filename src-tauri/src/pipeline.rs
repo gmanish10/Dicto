@@ -381,12 +381,28 @@ async fn run_utterance(
     let stt_provider = state.config.read().stt_provider;
     let transcriber: Box<dyn Transcriber> = match stt_provider {
         SttProvider::Local => {
-            let guard = local_whisper.read();
-            let Some(w) = guard.clone() else {
-                drop(guard);
-                anyhow::bail!("Local Whisper model not loaded. Download it from Settings.");
+            let cached = local_whisper.read().clone();
+            let w = match cached {
+                Some(w) => w,
+                None => {
+                    // The model may have finished downloading after the
+                    // eager load at coordinator start failed. Try a lazy
+                    // load now so the local provider self-heals mid-session
+                    // without an app restart; only bail if that also fails.
+                    let cfg = state.config.read().clone();
+                    let path = crate::model::resolve_path(&app, &cfg.model_name).map_err(|_| {
+                        anyhow::anyhow!("Speech model still downloading — try again in a moment.")
+                    })?;
+                    let loaded = tokio::task::spawn_blocking(move || {
+                        LocalWhisper::load(&path, &cfg.language)
+                    })
+                    .await??;
+                    let w = Arc::new(loaded);
+                    *local_whisper.write() = Some(w.clone());
+                    tracing::info!("lazily loaded local whisper model after download");
+                    w
+                }
             };
-            drop(guard);
             Box::new(LocalWhisperHandle(w))
         }
         SttProvider::Groq => {

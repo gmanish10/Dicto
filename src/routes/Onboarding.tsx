@@ -5,6 +5,7 @@ import { emit } from "@tauri-apps/api/event";
 import {
   ApiKey,
   ApiKeyStatus,
+  DownloadProgress,
   MicrophoneInfo,
   PermissionsSnapshot,
   PolishProvider,
@@ -64,6 +65,15 @@ interface DemoResult {
   polishProvider: string | null;
 }
 
+/** Format a download as a percentage, or a byte count when the server
+ *  didn't send a Content-Length (total === 0). */
+function downloadPct(p: DownloadProgress): string {
+  if (p.total > 0) {
+    return `${Math.floor((p.bytes / p.total) * 100)}%`;
+  }
+  return `${Math.floor(p.bytes / 1_000_000)} MB`;
+}
+
 export default function Onboarding() {
   const navigate = useNavigate();
   const [stepId, setStepIdInternal] = useState<StepId>("welcome");
@@ -75,6 +85,10 @@ export default function Onboarding() {
   const [tryItState, setTryItState] = useState<"idle" | "recording" | "transcribing">("idle");
   const [sawDemo, setSawDemo] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  // Passive speech-model state. The model auto-downloads in the background
+  // from app launch; onboarding only mirrors its progress — no button.
+  const [modelInstalled, setModelInstalled] = useState<boolean | null>(null);
+  const [modelDownload, setModelDownload] = useState<DownloadProgress | null>(null);
 
   // Step navigation is in-memory only. Onboarding does not persist the
   // step on every transition — it only needs to survive one specific
@@ -97,6 +111,37 @@ export default function Onboarding() {
     void api
       .checkPolishAvailability()
       .then((a) => setAppleAvailable(a.apple_intelligence.available));
+  }, []);
+
+  // Subscribe to the background speech-model download for the whole
+  // onboarding session: the Setup step shows passive progress and the
+  // Try-it step gates local transcription on the model being ready.
+  useEffect(() => {
+    void api.checkModelAvailability().then((m) => {
+      setModelInstalled(m.installed);
+      setModelDownload(m.downloading);
+    });
+    const unsubs: Array<Promise<() => void>> = [];
+    unsubs.push(
+      listen<DownloadProgress>("model:download-progress", (e) => {
+        setModelDownload(e.payload);
+        setModelInstalled(false);
+      })
+    );
+    unsubs.push(
+      listen("model:download-complete", () => {
+        setModelDownload(null);
+        setModelInstalled(true);
+      })
+    );
+    unsubs.push(
+      listen("model:download-failed", () => {
+        setModelDownload(null);
+      })
+    );
+    return () => {
+      unsubs.forEach((p) => void p.then((fn) => fn()));
+    };
   }, []);
 
   // Auto-pre-select Apple Intelligence cleanup on macOS 26+ when the
@@ -276,6 +321,8 @@ export default function Onboarding() {
             mics={mics}
             keys={keys}
             appleAvailable={appleAvailable}
+            modelInstalled={modelInstalled}
+            modelDownload={modelDownload}
             onChange={writeSettings}
             onKeysChanged={async () => setKeys(await api.getApiKeyStatus())}
             onBack={() => setStepId("permissions")}
@@ -288,6 +335,9 @@ export default function Onboarding() {
             state={tryItState}
             demo={demo}
             sawDemo={sawDemo}
+            sttProvider={settings.stt_provider}
+            modelInstalled={modelInstalled}
+            modelDownload={modelDownload}
             onRetry={() => setDemo(null)}
             onBack={() => setStepId("models")}
             onNext={() => setStepId("discover")}
@@ -459,6 +509,8 @@ function ModelsStep({
   mics,
   keys,
   appleAvailable,
+  modelInstalled,
+  modelDownload,
   onChange,
   onKeysChanged,
   onBack,
@@ -468,6 +520,8 @@ function ModelsStep({
   mics: MicrophoneInfo[];
   keys: ApiKeyStatus[];
   appleAvailable: boolean;
+  modelInstalled: boolean | null;
+  modelDownload: DownloadProgress | null;
   onChange: (patch: Partial<Settings>) => Promise<void>;
   onKeysChanged: () => Promise<void>;
   onBack: () => void;
@@ -554,6 +608,17 @@ function ModelsStep({
             onChanged={onKeysChanged}
           />
         )}
+        {settings.stt_provider === "local" && (
+          <p className="text-xs text-ink-400">
+            {modelDownload
+              ? `Setting up speech recognition… ${downloadPct(modelDownload)}`
+              : modelInstalled
+              ? "Speech model ready."
+              : modelInstalled === false
+              ? "Setting up speech recognition…"
+              : "Checking speech model…"}
+          </p>
+        )}
       </section>
 
       <section className="space-y-2">
@@ -630,6 +695,9 @@ function TryItStep({
   state,
   demo,
   sawDemo,
+  sttProvider,
+  modelInstalled,
+  modelDownload,
   onRetry,
   onBack,
   onNext,
@@ -638,12 +706,21 @@ function TryItStep({
   state: "idle" | "recording" | "transcribing";
   demo: DemoResult | null;
   sawDemo: boolean;
+  sttProvider: SttProvider;
+  modelInstalled: boolean | null;
+  modelDownload: DownloadProgress | null;
   onRetry: () => void;
   onBack: () => void;
   onNext: () => void;
 }) {
   const skipConfirmRef = useRef(false);
   const [confirmingSkip, setConfirmingSkip] = useState(false);
+
+  // Local transcription needs the speech model on disk. While it's still
+  // downloading we show a passive "Finishing setup…" line instead of the
+  // sample prompts — the hotkey would otherwise fail. Cloud STT providers
+  // don't need the model, so they're never gated.
+  const modelPending = sttProvider === "local" && modelInstalled !== true;
 
   function handleContinue() {
     if (sawDemo) {
@@ -673,6 +750,14 @@ function TryItStep({
         </p>
       </div>
 
+      {modelPending && (
+        <div className="rounded-md border border-ink-200 bg-ink-50 p-4 text-sm text-ink-500 dark:border-ink-700 dark:bg-ink-800">
+          Finishing setup…{" "}
+          {modelDownload ? `(${downloadPct(modelDownload)})` : ""} Local
+          transcription will be ready in a moment.
+        </div>
+      )}
+
       <div className="rounded-md border border-ink-200 bg-ink-50 p-4 text-sm dark:border-ink-700 dark:bg-ink-800">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
           Try saying one of these or any other sentence you want to try
@@ -689,21 +774,25 @@ function TryItStep({
           <span className="font-semibold uppercase tracking-wide text-ink-500">Status</span>
           <span
             className={
-              state === "recording"
+              modelPending
+                ? "pill-yellow"
+                : state === "recording"
                 ? "pill-lavender"
                 : state === "transcribing"
                 ? "pill-yellow"
                 : "pill-green"
             }
           >
-            {stateLabel}
+            {modelPending ? "Finishing setup…" : stateLabel}
           </span>
         </div>
         {demo ? (
           <ResultPanel demo={demo} onRetry={onRetry} />
         ) : (
           <div className="rounded-md border border-dashed border-ink-300 p-5 text-center text-sm text-ink-400 dark:border-ink-600">
-            Result will appear here after you release the hotkey.
+            {modelPending
+              ? "One moment — getting speech recognition ready."
+              : "Result will appear here after you release the hotkey."}
           </div>
         )}
       </div>

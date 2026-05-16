@@ -80,15 +80,21 @@ pub fn request_accessibility() -> PermissionStatus {
     accessibility_status()
 }
 
-/// Trigger the Input Monitoring prompt AND register Dicto in that
-/// pane's app list. `IOHIDCheckAccess()` (used for status checks) is
-/// check-only; `IOHIDRequestAccess()` is the variant that adds the app
-/// to the list and shows the system prompt.
+/// Register Dicto in the Input Monitoring pane's app list AND open that
+/// pane so the user can flip the toggle.
+///
+/// `IOHIDRequestAccess()` is what adds the app to the list (the
+/// check-only `IOHIDCheckAccess()` never does). But `IOHIDRequestAccess`
+/// does not reliably surface an interactive prompt when called from a
+/// Tauri command thread — so on its own, clicking "Allow" looked like it
+/// did nothing. We therefore also deep-link to the pane, where Dicto now
+/// appears thanks to the `IOHIDRequestAccess` call above.
 pub fn request_input_monitoring() -> PermissionStatus {
     #[cfg(target_os = "macos")]
     {
         const K_IO_HID_REQUEST_TYPE_LISTEN_EVENT: u32 = 1;
         let _ = unsafe { IOHIDRequestAccess(K_IO_HID_REQUEST_TYPE_LISTEN_EVENT) };
+        let _ = open_settings_pane("input_monitoring");
     }
     input_monitoring_status()
 }

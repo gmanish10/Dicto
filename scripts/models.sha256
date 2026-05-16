@@ -7,6 +7,8 @@
 # before placing it in `src-tauri/resources/models/`. A missing entry
 # fails the fetch — populate this file when adding a new model.
 #
-# Source: hashes of the canonical `ggml-*.bin` artifacts published by
-# ggerganov at https://huggingface.co/ggerganov/whisper.cpp.
+# Source: hashes of the canonical `ggml-*.bin` and `*-encoder.mlmodelc.zip`
+# artifacts published by ggerganov at
+# https://huggingface.co/ggerganov/whisper.cpp.
 c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d  ggml-small.en.bin
+b2ef1c506378b825b4b4341979a93e1656b5d6c129f17114cfb8fb78aabc2f89  ggml-small.en-encoder.mlmodelc.zip

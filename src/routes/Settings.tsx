@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import {
   ApiKeyStatus,
+  DownloadProgress,
   MicrophoneInfo,
   PermissionsSnapshot,
   PolishProvider,
@@ -29,6 +31,8 @@ export default function Settings() {
   const [keys, setKeys] = useState<ApiKeyStatus[]>([]);
   const [perms, setPerms] = useState<PermissionsSnapshot | null>(null);
   const [clearingHistory, setClearingHistory] = useState(false);
+  const [modelInstalled, setModelInstalled] = useState<boolean | null>(null);
+  const [modelDownload, setModelDownload] = useState<DownloadProgress | null>(null);
 
   const reloadKeys = async () => setKeys(await api.getApiKeyStatus());
 
@@ -36,6 +40,36 @@ export default function Settings() {
     void api.listMicrophones().then(setMics).catch(() => undefined);
     void reloadKeys();
     void api.checkPermissions().then(setPerms);
+  }, []);
+
+  // Passive local-model status. The model auto-downloads on first launch;
+  // here we only mirror its state — there is no download button.
+  useEffect(() => {
+    void api.checkModelAvailability().then((m) => {
+      setModelInstalled(m.installed);
+      setModelDownload(m.downloading);
+    });
+    const unsubs: Array<Promise<() => void>> = [];
+    unsubs.push(
+      listen<DownloadProgress>("model:download-progress", (e) => {
+        setModelDownload(e.payload);
+        setModelInstalled(false);
+      })
+    );
+    unsubs.push(
+      listen("model:download-complete", () => {
+        setModelDownload(null);
+        setModelInstalled(true);
+      })
+    );
+    unsubs.push(
+      listen("model:download-failed", () => {
+        setModelDownload(null);
+      })
+    );
+    return () => {
+      unsubs.forEach((p) => void p.then((fn) => fn()));
+    };
   }, []);
 
   if (!settings) return null;
@@ -152,6 +186,18 @@ export default function Settings() {
               <option value="groq">Groq Whisper — fast cloud, needs Groq key</option>
               <option value="open_ai">OpenAI Whisper — cloud, needs OpenAI key</option>
             </select>
+            {settings.stt_provider === "local" && (
+              <p className="mt-2 text-xs text-ink-400">
+                Speech model:{" "}
+                {modelDownload
+                  ? `downloading… ${downloadPct(modelDownload)}`
+                  : modelInstalled
+                  ? "installed"
+                  : modelInstalled === false
+                  ? "preparing…"
+                  : "checking…"}
+              </p>
+            )}
           </div>
         </section>
 
@@ -298,6 +344,15 @@ export default function Settings() {
       </div>
     </div>
   );
+}
+
+/** Format a download as a percentage, or a byte count when the server
+ *  didn't send a Content-Length (total === 0). */
+function downloadPct(p: DownloadProgress): string {
+  if (p.total > 0) {
+    return `${Math.floor((p.bytes / p.total) * 100)}%`;
+  }
+  return `${Math.floor(p.bytes / 1_000_000)} MB`;
 }
 
 function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
