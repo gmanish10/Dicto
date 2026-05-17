@@ -6,9 +6,9 @@ interface Props {
   status: PermissionStatus;
   pane: "microphone" | "accessibility" | "input_monitoring";
   /**
-   * Only set for the microphone row — macOS exposes a programmatic
-   * prompt API for mic but not for accessibility or input monitoring,
-   * so those rows fall back to the System Settings deep-link.
+   * Optional first-time request hook. macOS permission prompts are
+   * one-shot, so denied rows always fall back to the System Settings
+   * deep-link instead of retrying this hook.
    */
   onRequest?: () => Promise<void> | void;
 }
@@ -16,10 +16,8 @@ interface Props {
 /**
  * Per-permission card.
  *
- * - **Not granted**: prominent "Allow" button. For mic, calling the
- *   button triggers the macOS prompt inline. For accessibility +
- *   input monitoring, it deep-links to the relevant System Settings
- *   pane since macOS doesn't ship a programmatic grant API for those.
+ * - **Not granted**: prominent "Allow" button. Rows can provide an
+ *   inline system-prompt hook for first-time requests.
  * - **Granted**: clean status pill + a small "Change in System Settings"
  *   link so the user can revoke later without leaving Dicto.
  * - **Denied**: same as not-granted but with the muted-red pill, so the
@@ -57,7 +55,9 @@ export function PermissionRow({ label, description, status, pane, onRequest }: P
             type="button"
             className="btn-primary text-xs"
             onClick={async () => {
-              if (onRequest) {
+              if (isDenied) {
+                await api.openSystemSettings(pane);
+              } else if (onRequest) {
                 await onRequest();
               } else {
                 await api.openSystemSettings(pane);
