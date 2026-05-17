@@ -306,10 +306,18 @@ export default function Onboarding() {
               await api.requestInputMonitoringPermission();
               await refreshPerms();
             }}
+            onOpenInputMonitoringSettings={async () => {
+              await armResume();
+              await api.openSystemSettings("input_monitoring");
+            }}
             onRequestAccessibility={async () => {
               await armResume();
               await api.requestAccessibilityPermission();
               await refreshPerms();
+            }}
+            onOpenAccessibilitySettings={async () => {
+              await armResume();
+              await api.openSystemSettings("accessibility");
             }}
             onBack={() => setStepId("welcome")}
             onNext={onPermissionsContinue}
@@ -441,7 +449,9 @@ function PermissionsStep({
   allGranted,
   onRequestMic,
   onRequestInputMonitoring,
+  onOpenInputMonitoringSettings,
   onRequestAccessibility,
+  onOpenAccessibilitySettings,
   onBack,
   onNext,
 }: {
@@ -449,7 +459,9 @@ function PermissionsStep({
   allGranted: boolean;
   onRequestMic: () => Promise<void>;
   onRequestInputMonitoring: () => Promise<void>;
+  onOpenInputMonitoringSettings: () => Promise<void>;
   onRequestAccessibility: () => Promise<void>;
+  onOpenAccessibilitySettings: () => Promise<void>;
   onBack: () => void;
   onNext: () => void | Promise<void>;
 }) {
@@ -475,6 +487,7 @@ function PermissionsStep({
           status={perms.input_monitoring}
           pane="input_monitoring"
           onRequest={onRequestInputMonitoring}
+          onOpenSettings={onOpenInputMonitoringSettings}
         />
         <PermissionRow
           label="Accessibility"
@@ -482,6 +495,7 @@ function PermissionsStep({
           status={perms.accessibility}
           pane="accessibility"
           onRequest={onRequestAccessibility}
+          onOpenSettings={onOpenAccessibilitySettings}
         />
       </div>
       <div className="flex items-center justify-between pt-2">
